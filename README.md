@@ -13,3 +13,6 @@ TBA
 3. Genetic Polymorphism & Disease (Variant Calling)
    * Lecture (TBA)
    * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_03_genetic_polymorphism.ipynb)
+4. Transcribing the Message (Bulk RNA-Seq Quantification)
+   * Lecture (TBA)
+   * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_04_bulk_RNA_sequence_quantification.ipynb)
