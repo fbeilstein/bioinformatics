@@ -16,3 +16,6 @@ TBA
 4. Transcribing the Message (Bulk RNA-Seq Quantification)
    * Lecture (TBA)
    * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_04_bulk_RNA_sequence_quantification.ipynb)
+5. Cellular Individuality (Single-Cell Droplet Microfluidics)
+   * Lecture (TBA)
+   * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_05_single_cell_microfluidics.ipynb)
