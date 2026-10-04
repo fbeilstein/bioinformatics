@@ -19,3 +19,6 @@ TBA
 5. Cellular Individuality (Single-Cell Droplet Microfluidics)
    * Lecture (TBA)
    * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_05_single_cell_microfluidics.ipynb)
+6. Cellular State Spaces (Manifolds & Differentiation)
+   * Lecture (TBA)
+   * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_06_cellular_state_spaces.ipynb)
