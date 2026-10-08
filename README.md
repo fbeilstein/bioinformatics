@@ -22,3 +22,6 @@ TBA
 6. Cellular State Spaces (Manifolds & Differentiation)
    * Lecture (TBA)
    * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_06_cellular_state_spaces.ipynb)
+7. Folding the Molecular Machine (Protein 3D Conformation)
+   * Lecture (TBA)
+   * [Practice & Homework](https://colab.research.google.com/github/fbeilstein/bioinformatics/blob/master/practice_07_protein_3d_conformation.ipynb)
