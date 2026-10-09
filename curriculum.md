@@ -15,7 +15,7 @@ Lecture 1: The Molecular Blueprint (DNA Replication & Sequencing)
 * Lecture 2: Evolutionary Divergence (Homology & Comparative Genomics)
   - Biological Mechanism: Spontaneous point mutations, transition vs. transversion bias, replication slippage (indels), selective pressure, and the molecular clock.
   - Instrumental Method: Whole-genome reference assembly construction and high-throughput re-sequencing.
-  - Underlying Algorithm: Dynamic Programming. Derivation of the Needleman-Wunsch global alignment matrix with affine gap penalties ($O(N^2)$ space/time).
+  - Underlying Algorithm: Dynamic Programming. Derivation of the Smith-Waterman local alignment matrix with affine gap penalties ($O(N^2)$ space/time).
   - Industrial Tool: Bio.Align.PairwiseAligner (Biopython C-accelerated module). 
   - Dataset: Orthologous $\alpha$-globin and $\beta$-globin gene sequences across 5 vertebrate species (FASTA).
 
@@ -58,8 +58,8 @@ Lecture 1: The Molecular Blueprint (DNA Replication & Sequencing)
   - Biological Mechanism: Epistasis, compensatory mutations across geological timescales, sequence conservation landscapes, and predicting the functional impact of novel mutations.
   - Instrumental Method: Deep Mutational Scanning (DMS) libraries coupled with high-throughput sequencing selection assays.
   - Underlying Algorithm: Self-Attention & Masked Language Modeling (MLM). Extracting structural contact maps from transformer attention matrices:$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
-  - Industrial Tool: Hugging Face transformers + Meta's esm2_t6_8M_UR50D (using Colab T4 GPU). 
-  - Dataset: Green Fluorescent Protein (GFP) deep mutational scanning fitness matrix (Sarkisyan et al., 3 MB CSV).
+  - Industrial Tool: Hugging Face transformers + Meta's esm2_t6_8M_UR50D + facebook/esmfold_v1 (using Colab T4 GPU with accelerate). 
+  - Dataset: Green Fluorescent Protein (GFP) deep mutational scanning fitness matrix (Sarkisyan et al., 3 MB CSV) and dynamic RCSB PDB targets (e.g., 1UBQ, 1CRN).
   
   
   
