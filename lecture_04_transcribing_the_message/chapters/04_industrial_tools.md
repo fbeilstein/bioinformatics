@@ -313,16 +313,15 @@ gene_counts = ab["est_counts"].groupby(tx2gene).sum().round().astype(int)
 > Yeast has few introns and almost no alternative isoforms, so the transcript → gene map is nearly 1 : 1. In human (~4 isoforms per gene) use a proper `tx2gene` table from the annotation (GTF) — or `tximport` in R.
 
 ---
-
 # The Count Matrix
 
+
+:::matrix { cols="1.3fr 1fr" gap="30px" }
+[[0,0]]{ .smaller-table }
 ```python
 counts_df = pd.read_csv("yeast_heat_shock_counts.csv", index_col=0)
 counts_df.shape            # (7126, 6)
 ```
-
-:::matrix { cols="1.3fr 1fr" gap="30px" }
-[[0,0]]{ .smaller-table }
 ### First rows (real)
 
 | Gene | WT_1 | WT_2 | WT_3 | HS_1 | HS_2 | HS_3 |
@@ -346,8 +345,8 @@ Index = systematic ORF names: **Y** + chromosome (**A**–**P**) + arm (**L**/**
 | HS_2 | 22.8 M |
 | HS_3 | 23.1 M |
 
-- **593** genes have zero reads in all 6 samples
-- **932** genes have a total < 10 (homework Task 1)
+- **593** genes have zero reads in all 6 samples — and hundreds more have very low totals across all samples
+- In `pandas`: `.sum(axis=0)` sums **columns** (sample library sizes); `.sum(axis=1)` sums **rows** (total reads per gene — needed for low-count filtering in Task 1)
 :::
 
 ---
@@ -556,6 +555,7 @@ DESeq2 estimates how far genes really scatter around the trend:
 
 - Small scatter → strong pull to the trend
 - More replicates → the gene's own data weigh more, shrinkage weakens
+- **Low raw counts** → Poisson shot noise ($\mu$) dominates $\mu + \alpha\mu^2$, leaving a flat likelihood where the prior (trend) dominates; **high counts** yield a sharp likelihood that outweighs the prior
 
 Genes whose gene-wise $\alpha$ is far **above** the trend keep their high value (dispersion-outlier rule, `dds.var["_outlier_genes"]`: **94** genes in our run) — never shrink a truly variable gene into significance.
 :::
@@ -757,17 +757,15 @@ SSA1 is already high at 30 °C (constitutive Hsp70) and still rises 6×; HSP104 
 
 # ⚠ Pitfall — Ranking by Fold Change Alone
 
-Homework Task 4 sorts significant genes by `log2FoldChange`. Among the top 10 (padj < 0.01) are genes like:
+Sorting significant genes by raw `log2FoldChange` mixes well-measured biological hits with noisy low-count genes:
 
 :::matrix { .smaller-table cols="1fr" }
 [[0,0]]
 | Gene | baseMean | log₂FC | lfcSE | Shrunk log₂FC |
 | :--- | ---: | ---: | ---: | ---: |
-| YFL014W (*HSP12*) | 18,139 | 9.12 | 0.20 | 9.11 |
-| YCL048W-A | **12** | 4.98 | **1.17** | 4.44 |
-| YOL131W | **12** | 4.39 | **1.02** | 3.91 |
-| YBR296C | 267 | 4.27 | 1.03 | 3.71 |
-| YIL100W | **5** | 1.16 | 1.07 | **0.21** |
+| YFL014W (*HSP12*, high counts) | 18,139 | 9.12 | 0.20 | 9.11 |
+| YIL100W (low counts, from `head(3)`) | **5** | 1.16 | **1.07** | **0.21** |
+| *Illustrative low-count gene* (2 → 20 reads) | **~11** | ~3.3 | **> 1.0** | *pulled toward 0* |
 :::
 
 :::matrix { cols="1fr 1fr" gap="30px" }
@@ -830,6 +828,7 @@ $$ \hat{\mu} = 526.7, \quad s^2 = 7{,}433, \quad \hat{\alpha} = \frac{s^2 - \hat
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
 ### What the hand formula ignores
+- **Sample variance**: use `np.var(x, ddof=1)` (unbiased $s^2$; NumPy defaults to `ddof=0`, which underestimates variance by $1/3$ at $n = 3$, whereas pandas `.var()` defaults to `ddof=1`)
 - Different **size factors** per sample — must divide by $s_j$ first
 - The **condition** effect — use only replicates of one group (as here) or residuals from the GLM
 - Can be **negative** when $s^2 < \mu$ (by chance) → clip to a small positive value
@@ -858,7 +857,7 @@ The hand estimate (0.0249) is a little above the trend. The MAP step would move 
 - Shows **effect size vs. evidence** together
 
 ```python
-plot_df = res_df.dropna(subset=["padj", "log2FoldChange"])
+plot_df = res_df.dropna(subset=["padj", "log2FoldChange"]).copy()
 plot_df["nlp"] = -np.log10(plot_df["padj"].clip(lower=1e-300))
 ```
 
@@ -868,6 +867,7 @@ plot_df["nlp"] = -np.log10(plot_df["padj"].clip(lower=1e-300))
 - Typical "funnel": wide spread at low `baseMean`, narrow at high — the SE story from the previous slides
 - Cloud should be centred at **0**: if not, normalization failed
 - Colour by `padj < 0.05`: at low counts only huge LFCs are significant
+- **Zero-count guard**: 593 genes have `baseMean == 0` ($\log_{10} 0 = -\infty$) — drop `NaN`s and filter `baseMean > 0`, use `np.log10(baseMean + 1)`, or set `plt.xscale("log")`
 
 Without the log x-axis 90% of the points sit in one column at the left edge.
 :::
@@ -886,24 +886,23 @@ counts_df   = pd.read_csv("yeast_heat_shock_counts.csv", index_col=0)      # gen
 metadata_df = pd.read_csv("yeast_metadata.csv", index_col=0)
 metadata_df["condition"] = pd.Categorical(metadata_df["condition"], categories=["WT", "HeatShock"])
 
-# 1. Drop genes with almost no reads                                   (Task 1)
-counts_df = counts_df[counts_df.sum(axis=1) >= 10]
-
-# 2. Fit: size factors → dispersions → trend → MAP → GLM → Cook's
+# 1. Fit: size factors → dispersions → trend → MAP → GLM → Cook's
 dds = DeseqDataSet(counts=counts_df.T, metadata=metadata_df, design="~ condition")
 dds.deseq2()
 print(dds.obs["size_factors"], dds.varm["LFC"].columns.tolist())
 
-# 3. Test HeatShock vs WT
+# 2. Test HeatShock vs WT and inspect top hits by padj
 stat_res = DeseqStats(dds, contrast=["condition", "HeatShock", "WT"])
 stat_res.summary()
 res_df = stat_res.results_df
+print(res_df.sort_values("padj").head(5))
 
-# 4. Positive control, then the gene lists                             (Task 4)
-assert res_df.loc["YLL026W", "log2FoldChange"] > 0          # HSP104 must go UP
-sig = res_df[res_df.padj < 0.01]
-print(sig.sort_values("log2FoldChange", ascending=False).head(10))
+# 3. Positive controls (known heat-shock chaperones)
+for gene in ["YLL026W", "YAL005C"]:
+    print(gene, res_df.loc[gene, ["log2FoldChange", "padj"]].to_dict())
 ```
+
+> Useful `pandas` primitives for downstream filtering & ranking: row sums `df.sum(axis=1)`, boolean indexing `df[mask]`, descending sort `df.sort_values(col, ascending=False)`, and `.head(k).index.tolist()` to return gene IDs as a Python `list`.
 
 ---
 
