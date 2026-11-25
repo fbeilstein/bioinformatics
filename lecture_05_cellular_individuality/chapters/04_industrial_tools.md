@@ -459,16 +459,15 @@ Profiling empty droplets ($10 \le \text{UMI} \le 100$, $N = 11,435$) against rea
 
 :::matrix { cols="1.2fr 1fr" gap="30px" }
 [[0,0]]{ .smaller-table }
-### Top Genes in Ambient Background
-| Gene | Description | % of Empty Pool | % of Cell Pool |
-| :--- | :--- | :--- | :--- |
-| **`MALAT1`** | Nuclear lncRNA | **3.61%** | 2.53% |
-| **`B2M`** | $\beta_2$-microglobulin | **2.03%** | 1.90% |
-| **`TMSB4X`** | Thymosin beta-4 | **1.84%** | 1.94% |
-| **`MT-CO1`** | Cytochrome c oxidase I | **1.53%** | 0.52% |
-| **`FTL`** | Ferritin light chain | **1.42%** | 1.17% |
-| **`RPL13`** | Ribosomal protein L13 | **1.39%** | 1.21% |
-| **`MT-CO3`** | Cytochrome c oxidase III | **1.11%** | 0.38% |
+### Ambient vs. Intact Enrichment
+| Gene | Description | % Empty Pool | % Cell Pool | Empty / Cell |
+| :--- | :--- | ---: | ---: | ---: |
+| **`MT-CO1`** | Cytochrome c oxidase I | **1.53%** | 0.52% | **2.9×** |
+| **`MT-CO3`** | Cytochrome c oxidase III | **1.11%** | 0.38% | **2.9×** |
+| **`FTL`** | Ferritin light chain | 1.42% | 1.17% | 1.2× |
+| **`RPL13`** | Ribosomal protein L13 | 1.39% | 1.21% | 1.1× |
+| **`B2M`** | $\beta_2$-microglobulin | 2.03% | 1.90% | 1.1× |
+| **`TMSB4X`** | Thymosin beta-4 | 1.84% | 1.94% | 0.95× |
 
 [[0,1]]
 ### Mitochondrial Enrichment
@@ -1053,10 +1052,10 @@ In Homework Task 2, you implement `compute_mad(data_array)` in pure Python/NumPy
 ### Step-by-Step Algorithm
 $$\text{MAD} = \text{median}\left(\lvert X_i - \text{median}(X)\rvert\right)$$
 
-1. **Center**: Compute the median of the input array using `np.median()`.
-2. **Absolute Deviations**: Compute absolute residuals $\lvert X_i - M\rvert$ using `np.abs()`.
-3. **Dispersion**: Compute the median of those absolute deviations.
-4. **Normal Scale Factor**: Multiply by **$1.4826$** to calibrate the estimator for a standard normal distribution.
+1. **Convert input**: Wrap `data_array = np.asarray(data_array)` so plain Python `list`s support vectorized subtraction without `TypeError`.
+2. **Center**: Compute the median $M$ with `np.median()`.
+3. **Absolute Deviations & Dispersion**: Compute `np.median(np.abs(x - M))`.
+4. **Normal Scale Factor**: Multiply by **$1.4826$** to calibrate for a Gaussian distribution.
 
 [[0,1]]
 ### How to Verify Your Implementation
@@ -1065,11 +1064,11 @@ You can verify your custom function against SciPy's built-in robust statistics m
 ```python
 from scipy.stats import median_abs_deviation
 
-# Reference value using SciPy's normal scaling
+# Reference value using SciPy's exact 1 / norm.ppf(0.75) ≈ 1.4826022
 expected = median_abs_deviation(data, scale='normal')
 
-# Your implementation should match to full precision!
-assert np.isclose(compute_mad(data), expected)
+# Passes default rtol=1e-5 (difference between 1.4826 and exact k is ~1.5e-6)
+assert np.isclose(compute_mad(data), expected, rtol=1e-4)
 ```
 
 The scaling constant comes from the standard normal quantile: $k = 1 / \Phi^{-1}(0.75)$.
@@ -1090,6 +1089,7 @@ In Homework Task 3, you find which gene is the most highly expressed in `adata_c
 - **Matrix Flattening**:
   - SciPy sparse operations return a 2D matrix of shape `(1, n_vars)`.
   - Use `.A1` or `np.asarray(...).ravel()` to flatten into a 1D vector of gene totals.
+- **⚠ Stale `.var['total_counts']`**: Because `calculate_qc_metrics` ran *before* filtering, `.var['total_counts']` still reflects pre-filtered droplets — sum `adata_clean.X` directly!
 
 [[0,1]]
 ### Locating the Winner
@@ -1105,43 +1105,39 @@ In Homework Task 3, you find which gene is the most highly expressed in `adata_c
 
 # The Mathematics of UMI Collisions (Homework Task 4)
 
-Unique Molecular Identifiers (UMIs) index original cDNA molecules before PCR amplification:
+Unique Molecular Identifiers (UMIs) tag each original mRNA molecule **during reverse transcription, before PCR**:
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
-### The Random Sampling Model
-- A UMI barcode of length $L$ nucleotides has $4^L$ possible sequences:
-  $$N = 4^L\text{ possible unique barcodes}$$
-- For $L = 10$, $N = 4^{10} = \mathbf{1,048,576}$.
-- When $k$ molecules of a specific transcript are captured in a single droplet, each molecule randomly and independently samples one UMI from $N$ with replacement.
-- This is the **classical occupancy problem** (coupon collector / birthday paradox).
+### Pre-PCR Tagging & Random Sampling
+- All PCR copies of a molecule inherit the **same UMI**; collapsing duplicate `(barcode, UMI, gene)` tuples removes exponential PCR amplification bias.
+- A UMI barcode of length $L$ nucleotides has $N = 4^L$ possible sequences (e.g., $L = 8 \implies 65,536$).
+- When $k$ molecules of one gene enter a droplet, each independently draws one of $N$ UMIs with replacement (**classical occupancy / birthday problem**).
 
 [[0,1]]
-### The Occupancy Expectation ($E$)
-The probability that a specific UMI is NOT chosen by any of the $k$ molecules is $(1 - 1/N)^k \approx e^{-k/N}$.
-The expected number of distinct UMIs observed ($E$) is:
+### Occupancy Expectation & Collision Probability
+The chance a specific UMI is missed by all $k$ molecules is $(1 - 1/N)^k \approx e^{-k/N}$.
+The expected number of **distinct UMIs observed** ($E$) is:
 
 $$E = N \left(1 - \left(1 - \frac{1}{N}\right)^k\right) \approx \mathbf{N \left(1 - e^{-k/N}\right)}$$
 
-- When $k \ll N$, $E \approx k$ (collisions are rare).
-- When $k$ is large, collisions cause **under-counting**: you observe $E < k$.
-- The number of lost UMIs is $k - E$.
+- **Lost counts** (under-counting): $k - E$; **fractional loss**: $(k - E) / k$.
+- **Probability of $\ge 1$ collision** (birthday paradox): $P \approx 1 - \exp\left(-\frac{k(k-1)}{2N}\right)$.
 :::
 
 ---
 
 # UMI Capacity & Collision Correction
 
-Why did sequencing platforms transition from 10-nt to 12-nt UMIs?
+Why did sequencing platforms transition from 10-nt (10x v2) to 12-nt (10x v3) UMIs?
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
-### Barcode Capacity Comparison
-- **10-nt UMI (10x v2)**:
-  $$N = 4^{10} = \mathbf{1,048,576}$$
-- **12-nt UMI (10x v3)**:
-  $$N = 4^{12} = \mathbf{16,777,216}$$
-- A 2-nucleotide increase expands the barcode diversity by **$16\times$**, dramatically reducing collision probabilities for highly expressed genes.
+### Barcode Capacity Scaling
+- Every extra nucleotide multiplies barcode space by $4\times$:
+  $$N(L) = 4^L$$
+- Going from 10-nt (v2) to 12-nt (v3, $N = 4^{12} = \mathbf{16,777,216}$) expands barcode diversity by **$4^2 = 16\times$**.
+- Larger $N$ keeps $k / N \ll 1$, pushing collisions down even for ultra-abundant genes.
 
 [[0,1]]
 ### Inverting the Collision Formula
@@ -1151,7 +1147,7 @@ $$\frac{E}{N} = 1 - e^{-k/N} \implies e^{-k/N} = 1 - \frac{E}{N}$$
 
 $$k_{\text{corrected}} = -N \ln\left(1 - \frac{E}{N}\right)$$
 
-> In Homework Task 4, use the formula for $E$ to compute how many *fewer* UMIs are observed when $k = 50,000$ molecules are captured with $L = 10$.
+> In Homework Task 4, compute $N = 4^L$ for $L = 10$, evaluate the collision behavior at $k = 50,000$, and find how many *fewer* UMIs ($k - E$) are observed.
 :::
 
 ---
@@ -1189,23 +1185,23 @@ import numpy as np, scanpy as sc
 adata = sc.read_10x_mtx('raw_gene_bc_matrices/hg19/', var_names='gene_symbols', cache=True)
 adata.var_names_make_unique()
 
-# 2. Initial cell calling: drop ambient empty droplets (< 500 UMIs)
-adata = adata[adata.X.sum(axis=1).A1 > 500, :].copy()
-
-# 3. Calculate mitochondrial QC metrics
+# 2. Flag mitochondrial genes and compute QC metrics (matches notebook Part 5)
 adata.var['mt'] = adata.var_names.str.startswith('MT-')
 sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
 
-# 4. Compute robust outlier threshold via MAD
+# 3. Initial cell calling: drop ambient empty droplets (<= 500 UMIs)
+adata = adata[adata.obs.total_counts > 500, :].copy()
+
+# 4. Compute robust outlier threshold via MAD (notebook Part 6)
 pct_mt = adata.obs['pct_counts_mt'].values
 median_mt = np.median(pct_mt)
-mad_scaled = np.median(np.abs(pct_mt - median_mt)) * 1.4826022
-threshold_mt = median_mt + (3 * mad_scaled)
+mad_scaled = np.median(np.abs(pct_mt - median_mt)) * 1.4826
+threshold = median_mt + (3 * mad_scaled)
 
-print(f"Dynamic MT Outlier Threshold: {threshold_mt:.2f}%")
+print(f"Dynamic MT Outlier Threshold: {threshold:.2f}%")
 
 # ---- HOMEWORK TASKS ----
-# Task 1: Filter adata into adata_clean using threshold_mt and gene count limits
+# Task 1: Filter adata into adata_clean using threshold and gene count limits
 # Task 2: Implement your custom compute_mad() function
 # Task 3: Identify the most highly expressed gene in adata_clean
 # Task 4: Calculate UMI collision probabilities and lost counts for k=50,000
