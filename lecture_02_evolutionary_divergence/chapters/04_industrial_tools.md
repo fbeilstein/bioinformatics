@@ -20,8 +20,6 @@ Bio.Entrez · UniProt REST · Bio.Align.PairwiseAligner · Bio.Phylo
 - **Bio.Phylo** — distance matrices, Neighbor-Joining trees, outgroup rooting.
 - **scipy.stats.linregress** — testing the molecular clock.
 
----
-
 # Roadmap
 
 Two pipelines in the practice notebook — a **tree** (practice) and a **clock** (homework):
@@ -655,11 +653,12 @@ length  = aln.shape[1]
 
 ### Homework Task 1 (`calculate_identity`)
 
-$$ \text{identity} = \frac{\text{matches}}{\text{comparable columns}} = \frac{3}{7} \approx 42.9\% $$
+$$ \text{identity} = \frac{\text{matches}}{\text{comparable columns}} = \frac{3}{7} \approx 0.429 $$
 
 Gap columns (`"-"`) are **ignored**:
 - Extract full gapped strings via `aln[0]` and `aln[1]` and iterate column-by-column with `zip()`.
 - Count only columns where **neither** character is `"-"`.
+- Return a **fraction** in `[0.0, 1.0]` (Task 2 expects a fraction; Task 3 multiplies by 100 for `%`).
 - Guard the edge case: if `comparable == 0`, return `np.nan`.
 :::
 
@@ -819,9 +818,9 @@ Horizontal length = **branch length** (evolutionary distance), not time.
 
 # Testing the Molecular Clock — `pandas` & `linregress`
 
-If substitutions accumulate at a constant rate, distance is **linear in divergence time**:
+If substitutions accumulate at a constant per-lineage rate $r$, the pairwise distance across total path $2t$ is **linear in divergence time $t$**:
 
-$$ d(t) \approx r \cdot t $$
+$$ d(t) \approx 2 r \cdot t $$
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
@@ -836,7 +835,7 @@ df  = pd.DataFrame(records)
 sub = df[df["Gene"] == "CYCS"]
 
 fit = linregress(sub["MYA"], sub["Distance"])
-# fit.slope        → r (subs/site/MYA)
+# fit.slope        → 2r (subs/site/MYA)
 # fit.intercept    → should be ≈ 0
 # fit.rvalue ** 2  → R² (how clock-like)
 
@@ -848,7 +847,7 @@ plt.plot(x_line, fit.slope * x_line + fit.intercept, "--")
 [[0,1]]
 
 ### Reading the plots
-- **Slope** — speed of the clock. Steeper = faster-evolving protein
+- **Slope** — speed of the clock (negative `%/MYA` for identity in Task 4; positive `subs/site/MYA` for distance in Task 5)
 - **$R^2 \to 1$** — points lie on a line → clock-like
 - **Curvature in identity plot** — saturation (multiple hits)
 - **Scatter** — rate varies between lineages, or uncertain MYA values
