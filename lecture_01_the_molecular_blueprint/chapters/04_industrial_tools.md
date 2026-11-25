@@ -46,6 +46,36 @@ Four tools form a complete pipeline — from public database to species identifi
 :::
 
 ---
+# Environment Setup
+
+How the tools are installed in Google Colab (matching the practice notebook):
+
+:::matrix { .cards cols="1fr 1fr" gap="30px" margin-top: 20px; }
+[[0,0]]{ .green }
+### Command-Line Tools (Colab)
+```bash
+# fastp: precompiled static binary → invoke as ./fastp
+wget -q http://opengene.org/fastp/fastp -O fastp
+chmod a+x ./fastp
+
+# mash & SRA Toolkit: Ubuntu apt packages
+apt-get -y -qq install mash sra-toolkit
+```
+
+[[0,1]]{ .blue }
+### Running Shell Commands from Python
+```python
+import subprocess
+
+res = subprocess.run(cmd, shell=True)
+if res.returncode != 0:
+    print("Failed — remove -q flags to inspect errors")
+```
+- Chaining with `&&` halts immediately on the first failing step.
+- Biopython (`Bio.SeqIO`) is installed via `pip install -q biopython`.
+:::
+
+---
 # Tool 0 — SRA Toolkit
 
 ## Getting Data: `fasterq-dump`
@@ -126,6 +156,33 @@ Should equal reads read. If it doesn't, some reads were lost — **re-download**
 :::
 
 ---
+
+# SRA Toolkit — Practical Pitfalls (Colab & Homework)
+
+When searching [NCBI SRA](https://www.ncbi.nlm.nih.gov/sra/) for your own reference accessions, three practical details matter:
+
+:::matrix { .cards cols="1fr 1fr 1fr" gap="30px" margin-top: 20px; }
+[[0,0]]{ .purple }
+### Picking a Good Run
+- Select **SRA** in the search dropdown and query the organism name.
+- Check **Size** (Mb/Gb) before downloading — a 50 MB bacterial run finishes in seconds; a 20 GB run can fill Colab's disk.
+- Check **Library Layout**: `PAIRED` vs. `SINGLE`.
+
+[[0,1]]{ .orange }
+### Paired-End vs. Single-End
+- For **paired-end** runs, `--split-files` writes `SRR..._1.fastq` and `SRR..._2.fastq`.
+- For **single-end** runs (common in viral datasets), it writes a **single** `SRR....fastq`!
+- Always check `os.path.exists()` before renaming files.
+
+[[0,2]]{ .green }
+### Disk Space Lifecycle
+- Raw FASTQ: **hundreds of MB – GB**
+- Clean FASTQ: **hundreds of MB**
+- Mash sketch (`.msh`): **~1–10 KB**
+- Process **one sample at a time** and delete intermediate `.fastq` files (`os.remove()`) as soon as `.msh` is created.
+:::
+
+---
 # Tool 1 --- fastp
 
 ## What is it?
@@ -189,25 +246,32 @@ fastp detects adapters automatically using overlap analysis of paired-end reads.
 ---
 # fastp — Command Line Usage
 
-### Basic Paired-End Trimming
-
+:::matrix { cols="1fr 1fr" gap="30px" }
+[[0,0]]
+### Paired-End Trimming
 ```bash
-fastp \
-  -i reads_R1.fastq.gz \     # input forward reads
-  -I reads_R2.fastq.gz \     # input reverse reads
-  -o clean_R1.fastq.gz \     # output forward reads
-  -O clean_R2.fastq.gz \     # output reverse reads
-  --thread 4 \               # parallel threads
-  --html fastp_report.html   # QC report
+./fastp \
+  -i reads_R1.fastq \     # input forward reads
+  -I reads_R2.fastq \     # input reverse reads
+  -o clean_R1.fastq \     # output forward reads
+  -O clean_R2.fastq \     # output reverse reads
+  -h fastp_report.html    # HTML QC report (--html)
 ```
 
-### What Happens Under the Hood
+### Single-End Trimming
+```bash
+./fastp -i reads.fastq -o clean.fastq -h report.html
+```
+*(Also accepts `.fastq.gz` transparently and writes `fastp.json` unless redirected with `-j`.)*
 
-1. **Adapter detection** — overlaps paired reads to find adapter sequence
-2. **Quality trimming** — slides a window across each read, trims when mean $Q < 20$
-3. **Length filter** — discards reads shorter than 15 bp (default)
-4. **Complexity filter** — removes low-complexity reads (e.g., poly-A)
-5. **Report generation** — produces an interactive HTML summary
+[[0,1]]
+### What Happens Under the Hood
+1. **Adapter detection** — overlaps paired reads (or matches known adapters for single-end) to strip 3' adapter tails
+2. **Quality filter (default)** — discards reads where $> 40\%$ of bases have $Q < 15$ (`-q`, `-u`), or with $> 5$ `N` bases (`-n`)
+3. **Sliding-window trim (optional)** — enables tail cutting when window mean $\bar{Q} < 20$ (`--cut_right -W 4 -M 20`)
+4. **Length filter** — discards reads shorter than 15 bp (`-l`)
+5. **Report generation** — prints console summary + interactive HTML
+:::
 
 ---
 # fastp — Quality Score Filtering
@@ -217,20 +281,19 @@ $$
   Q = -10 \log_{10} P_{\text{error}} 
 $$
 
-fastp uses a **sliding window** approach to trim low-quality tails:
-
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
 
-### Sliding Window Trim
+### Q20 / Q30 & Sliding Window Trim
 
-For a window of size $w$ starting at position $i$:
+- **Q20 bases (%)**: fraction of all bases with $Q \ge 20$ ($\ge 99\%$ accuracy, $P_{\text{error}} \le 0.01$).
+- **Q30 bases (%)**: fraction of all bases with $Q \ge 30$ ($\ge 99.9\%$ accuracy, $P_{\text{error}} \le 0.001$).
 
-$$ \bar{Q}_i = \frac{1}{w} \sum_{j=i}^{i+w-1} Q_j $$
+With `--cut_right`, fastp slides a window of size $w$ starting at position $i$:
 
-If $\bar{Q}_i < Q_{\text{threshold}}$, trim from position $i$ onward.
+$$ \bar{Q}\_i = \frac{1}{w} \sum_{j=i}^{i+w-1} Q_j $$
 
-**Default**: $w = 4$, $Q_{\text{threshold}} = 20$ (i.e., $P_{\text{error}} \leq 1\%$).
+If $\bar{Q}\_i < Q_{\text{threshold}}$, trim from position $i$ onward (default $w = 4$, $Q_{\text{threshold}} = 20$).
 
 [[0,1]]
 
@@ -243,39 +306,39 @@ If $\bar{Q}_i < Q_{\text{threshold}}$, trim from position $i$ onward.
 | 30 | 1 in 1,000 | 99.9% |
 | 40 | 1 in 10,000 | 99.99% |
 
-A threshold of $Q \geq 20$ keeps only bases with $\leq 1\%$ error probability — the standard for downstream analysis.
+Comparing Q20% and Q30% **before vs. after filtering** shows how much dataset quality improved.
 :::
 
 ---
 
-# fastp — The HTML Report
+# fastp — Console Summary & HTML Report
 
-fastp generates a self-contained HTML report with interactive charts:
+fastp prints a console summary and generates a self-contained HTML report with interactive charts:
 
 :::matrix { .cards cols="1fr 1fr 1fr" gap="30px" margin-top: 20px; }
 [[0,0]]{ .green }
-### Before Filtering
-- Total reads
-- Total bases
-- Q20 & Q30 percentages
+### Before / After Filtering
+- Total reads & total bases
+- Q20 & Q30 base percentages
 - GC content distribution
 - Per-base quality profile
+- Read length distribution
 
 [[0,1]]{ .orange }
-### After Filtering
-- Reads passing filter
-- Adapter-trimmed reads (%)
-- Quality-trimmed reads (%)
-- Duplication rate estimate
-- Insert size distribution
+### Filtering Results
+- Reads passed filter
+- Reads failed: low quality
+- Reads failed: too many `N` bases
+- Reads failed: too short
+- Adapter-trimmed reads & bases
 
 [[0,2]]{ .blue }
-### Key Diagnostics
+### Library Diagnostics
+- **Duplication rate** (PCR bias)
+- **Insert size peak** (paired-end fragment length)
 - Overrepresented sequences
 - K-mer frequency profiles
 - Adapter content curves
-- Read length distribution
-- Quality score heatmaps
 :::
 
 > **In practice**: always inspect the fastp report before proceeding. A sudden drop in Q30% or unexpected adapter content signals a problem in library preparation.
@@ -370,7 +433,7 @@ from Bio import SeqIO
 import statistics
 
 qualities = []
-for record in SeqIO.parse("clean_R1.fastq.gz", "fastq"):
+for record in SeqIO.parse("clean_R1.fastq", "fastq"):   # for .gz: gzip.open(..., "rt")
     mean_q = statistics.mean(record.letter_annotations["phred_quality"])
     qualities.append(mean_q)
 
@@ -463,15 +526,15 @@ print(f"Kept {count} reads")
 
 ```bash
 mash sketch -k 21 -s 1000 -m 2 ecoli_reads.fastq -o ecoli
-#            │      │      │                         └─ output prefix (.msh)
-#            │      │      └─ minimum k-mer copies (error filter)
-#            │      └─ sketch size (keep 1000 smallest hashes)
-#            └─ k-mer size
+#            │      │      │                         └─ optional output prefix (.msh)
+#            │      │      └─ minimum k-mer copies (error filter; FASTQ reads only!)
+#            │      └─ sketch size (default s = 1000 smallest hashes)
+#            └─ k-mer size (default k = 21)
 ```
 
-The `-m 2` flag requires each k-mer to appear **at least twice** before it is included. Sequencing errors produce random k-mers that typically appear only once — this filter suppresses them.
-
-A ~5 MB genome is compressed into a **~1 KB sketch** — a 5000× reduction.
+- Without `-o`, mash writes `<input_filename>.msh` automatically (e.g., `Reference_Ecoli_1.fastq.msh`).
+- The `-m 2` flag requires each k-mer to appear **at least twice** — suppressing random singleton sequencing errors. *(Never use `-m 2` on a 1× assembled FASTA genome, where unique k-mers appear only once!)*
+- A $\sim $5 MB genome compresses to a **~1 KB sketch** — a 5000× reduction.
 
 ---
 
@@ -490,11 +553,13 @@ Writing to ecoli_reads.fastq.msh...
 
 ### Estimated Genome Size
 
-Mash counts distinct k-mers and estimates the total genome length in base pairs.
+Mash counts distinct k-mers (from the bottom-$s$ hash density) and estimates the total genome length in base pairs.
 
-For *E. coli*: ~4.6 million bp (matches the known genome of 4.64 Mbp).
+- **Viruses**: $\sim 10^4\text{–}10^5$ bp
+- **Bacteria** (e.g. *E. coli*): $\sim 10^6\text{–}10^7$ bp (4.64 Mbp)
+- **Mammals**: $\sim 3 \times 10^9$ bp
 
-This is a quick sanity check — if you're sequencing *E. coli* but the estimate says 3 Gbp, something is **wrong** (contamination with human DNA?).
+A quick sanity check — if you're sequencing *E. coli* but the estimate says 3 Gbp, suspect host/human contamination!
 
 [[0,1]]
 
@@ -512,18 +577,16 @@ A coverage of **47×** means each position was read ~47 times on average.
 :::
 
 ---
-
 # mash — Distance Computation
-
+:::matrix{cols=73/27}
+[[0,0]]
 ### Step 2: `mash dist` — Compare
 
 ```bash
 mash dist ecoli.msh salmonella.msh
 ```
-
-Output (5 tab-separated columns):
 ```
-ecoli.fna    salmonella.fna    0.0853    8.14e-10    732/1000
+ecoli.fna    salmonella.fna    0.0853    8.14e-10    91/1000
 │            │                 │         │           │
 │            │                 │         │           └─ shared hashes / sketch size
 │            │                 │         └─ p-value
@@ -531,18 +594,21 @@ ecoli.fna    salmonella.fna    0.0853    8.14e-10    732/1000
 │            └─ query ID
 └─ reference ID
 ```
-
+[[0,1]]
 > **P-value**: The probability of observing this many shared hashes **by random chance** alone. A value near $0$ (e.g., $8.14 \times 10^{-10}$) means the similarity is statistically significant. A large p-value (e.g., $0.5$) means the match could be noise.
+
+$\leftarrow$ Output (5 tab-separated columns)
+:::
 
 ### The Math (from Part 3)
 
 The Jaccard index is estimated from the shared hash count:
 
-$$\hat{J} = \frac{|h_{\min}(A) \cap h_{\min}(B)|}{s} = \frac{732}{1000} = 0.732$$
+$$\hat{J} = \frac{|W \cap S(A) \cap S(B)|}{s} = \frac{91}{1000} = 0.091$$
 
 Then converted to Mash distance:
 
-$$D = -\frac{1}{k} \ln\left(\frac{2J}{1+J}\right) = -\frac{1}{21} \ln\left(\frac{2 \times 0.732}{1.732}\right) \approx 0.0853$$
+$$D = -\frac{1}{k} \ln\left(\frac{2J}{1+J}\right) = -\frac{1}{21} \ln\left(\frac{2 \times 0.091}{1.091}\right) \approx 0.0853$$
 
 ---
 
@@ -617,13 +683,55 @@ Estimates coverage and auto-calculates the copy threshold $c$.
 - Both flags achieve the same goal: **suppress error k-mers**
 :::
 
-### Then compare against a reference:
+### Comparing `.msh` vs. `.fastq`
 
 ```bash
-mash dist reads.fastq.msh reference.msh
+mash dist reference.msh query.msh      # ✓ fast, preserves -m 2 filtering, tiny on disk
+mash dist reference.msh query.fastq    # sketches query on the fly (no -m 2 unless passed!)
 ```
 
 > **This is the full pipeline**: `fasterq-dump` downloads → `fastp` cleans → `mash sketch -m 2` compresses → `mash dist` identifies the species.
+
+---
+
+# mash — Multi-Reference Search & Python Parsing
+
+To classify unknown samples against a panel of references programmatically:
+
+:::matrix { cols="1fr 1fr" gap="30px" }
+[[0,0]]
+### Combining Sketches (`mash paste`)
+
+Combine all reference `.msh` files into a **single database sketch**:
+
+```bash
+# Combine multiple sketches into references.msh
+mash paste references ref1.msh ref2.msh ref3.msh
+
+# Score one query against ALL references in one call
+mash dist references.msh mystery.msh
+```
+
+- Output contains **one TSV row per reference** — compare all candidates in milliseconds.
+- All raw & cleaned FASTQ files can be deleted once their `.msh` files exist!
+
+[[0,1]]
+### Capturing & Parsing in Python
+
+```python
+import subprocess
+
+res = subprocess.run(
+    ["mash", "dist", "references.msh", "mystery.msh"],
+    capture_output=True, text=True, check=True
+)
+
+for line in res.stdout.strip().splitlines():
+    ref, query, dist, pval, hashes = line.split("\t")
+    dist, pval = float(dist), float(pval)
+    # pick the reference with minimum dist (and check D < 0.05)
+```
+:::
 
 ---
 
@@ -715,4 +823,4 @@ for rec in SeqIO.parse("Reference_Ecoli_1.fastq", "fastq"):
 | SARS-CoV-2 | ? |
 | *Staphylococcus aureus* (MRSA) | ? |
 
-> **Homework**: Download reference genomes from the SRA database and build a classifier that identifies all 7 mystery organisms.
+> **Homework**: Download reference datasets from the NCBI SRA database, build a Python classifier that identifies all 7 mystery organisms, and optimize your pipeline for disk space consumption.
