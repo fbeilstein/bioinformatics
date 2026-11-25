@@ -661,29 +661,29 @@ Every tool on today's list picks its own convention. The **same** SNP, rs3092994
 
 ---
 
-# Filtering — From 168 Records to 25
+# Filtering — Why Both QUAL and DP?
 
 Homework Task 1: keep a variant only if `QUAL ≥ 20` **and** `DP ≥ 15`.
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
 
-### Where the 168 records go
+### The four filter quadrants
 
-| QUAL | DP | Records |
+| QUAL | DP | Action & typical cause |
 | :--- | :--- | :--- |
-| ≥ 20 | ≥ 15 | **25 — kept** |
-| ≥ 20 | < 15 | 68 |
-| < 20 | < 15 | 72 |
-| < 20 | ≥ 15 | 3 |
+| ≥ 20 | ≥ 15 | **Keep** — well-supported call |
+| ≥ 20 | < 15 | Drop — off-target intron / low coverage |
+| < 20 | < 15 | Drop — noise in shallow valleys |
+| < 20 | ≥ 15 | Drop — systematic sequencing / strand artifact |
 
-Median DP of all records: **5**. Most raw calls come from off-target reads in introns.
+Median DP across all 168 raw records is only **5** (mostly off-target intronic reads).
 
-Record types: 152 SNPs, 7 deletions, 6 insertions, 3 complex.
+**Defensive check**: `v.QUAL` and `v.INFO.get("DP")` (or `v.format("DP")`) can be `None` — guard before `>=`!
 
 [[0,1]]
 
-### Why both filters?
+### Real failure modes in our VCF
 
 **High QUAL, low DP** — confident in *some* variant, but genotype rests on a handful of reads:
 ```
@@ -731,33 +731,27 @@ Many freebayes records with `DP = 2` in our VCF are genotyped `1/1` on two reads
 
 # Allele Fraction Spectrum
 
-Homework Task 2: $\displaystyle AAF = \frac{AO}{RO + AO}$ for each of the 25 kept variants.
+Homework Task 2: compute $\displaystyle \text{AAF} = \frac{AO}{RO + AO}$ for every variant passing Task 1 and plot a histogram.
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
 
-### Expected peaks
-- **0.5** — heterozygous (one copy of two)
-- **1.0** — homozygous alternate
-- 0.0 — homozygous reference (freebayes rarely reports these)
+### Expected peaks in a diploid genome
+- **~0.5** — heterozygous (`0/1`, one copy of two)
+- **~1.0** — homozygous alternate (`1/1`, both copies)
+- **~0.0** — homozygous reference (rarely emitted by freebayes)
 
-### Our NA12878 BRCA1 result
-
-| AAF bin | Variants |
-| :--- | :--- |
-| 0.0 – 0.2 | 0 |
-| 0.2 – 0.4 | 2 |
-| **0.4 – 0.6** | **22** |
-| 0.6 – 0.9 | 0 |
-| **≥ 0.9** | **1** |
+### Implementation tips
+- Extract `ro = v.format("RO")[0][0]` and `ao = v.format("AO")[0][0]` (guard `is not None`)
+- Guard division by zero (`if ro + ao > 0`)
+- Plot with `plt.hist(aaf, bins=20, range=(0, 1))`
 
 [[0,1]]
 
 ### Reading the spectrum
-- 24 of 25 calls are `0/1`: NA12878 carries one common BRCA1 haplotype on one chromosome and the reference haplotype on the other
-- Peaks are **wide**: with 40 reads, 21/19 or 25/15 are both ordinary sampling outcomes
-- Systematic shift **below** 0.5 → *reference bias*: reads with the alt allele align slightly worse or are captured less efficiently
-- AAF near 0.1–0.3 in a germline sample → artifact, contamination — or a **somatic/mosaic** variant in tumour data
+- Peaks are **wide**: by binomial sampling ($\sigma = \frac{1}{2\sqrt{n}}$), at 40× depth both 21/19 and 25/15 are ordinary outcomes for a true `0/1`
+- Systematic shift **below** 0.5 → *reference bias*: reads carrying the alt allele align slightly worse or hybridize less efficiently to capture probes
+- AAF near 0.1–0.3 in a germline sample → artifact or contamination — or a **somatic/mosaic** variant in tumour data
 :::
 
 ---
@@ -870,9 +864,9 @@ Always normalize **both** files the same way before comparing call sets or annot
 
 # ClinVar Results for NA12878
 
-The notebook loop (exact REF/ALT match, ClinVar release 2026-10-11): **58** of 168 records annotated. **56 Benign**, **2 with no germline classification** (`CLNSIG` is `None`).
+The Part 7 practice loop (exact REF/ALT match, ClinVar release 2026-10-11): **58** of 168 raw records annotated — **56 Benign**, **2 with no germline classification** (`CLNSIG` is `None`).
 
-Of the **25 filtered** variants, 19 are in ClinVar:
+Notable high-depth BRCA1 variants found in ClinVar:
 
 :::matrix { .smaller-table cols="1fr" }
 [[0,0]]
@@ -970,7 +964,9 @@ Reference/alternate counts at four kept SNPs, obtained three ways:
 [[0,1]]
 
 ### Lesson for Task 4
-To compare your genotyper with freebayes **fairly**, feed it the **same evidence**: same read filters, same base-quality threshold. Otherwise disagreements reflect the input data, not the algorithm.
+- Feed your genotyper the **same evidence** as freebayes: skip duplicates & secondary alignments, keep all base qualities (`min_base_quality=0` if using `pileup`).
+- Restrict single-base pileups to **SNPs** (`v.is_snp`) — multi-base indels cannot be matched one character at a time!
+- Ignore reads carrying a 3rd base (neither `v.REF` nor `v.ALT[0]`).
 :::
 
 ---
@@ -995,7 +991,8 @@ def compute_likelihoods(ref_quals, alt_quals):
     return ll_00, ll_01, ll_11
 ```
 
-Normalize with the **log-sum-exp** trick: subtract the maximum before `np.exp`.
+- **Log-sum-exp**: subtract `max_ll` before `np.exp` to get normalized posteriors.
+- **⚠ `Q = 0` edge case**: $10^{0} = 1 \implies \log(1 - \varepsilon) = -\infty$; clip $\varepsilon$ (e.g. `np.clip(eps, 1e-12, 1 - 1e-12)`) or skip `Q == 0`.
 
 [[0,1]]
 
@@ -1010,7 +1007,7 @@ $$ \log P(G \mid D) = \log P(D \mid G) + \log P(G) + \text{const} $$
 | 0/1 | $2f(1-f)$ |
 | 1/1 | $f^2$ |
 
-A correct implementation, fed freebayes-equivalent read counts, reproduces freebayes' genotype at all 20 kept SNPs tested.
+For the **MAP genotype** (`'0/0'`, `'0/1'`, `'1/1'`), `argmax` over the unnormalized log-posteriors gives the exact winner; compare your calls against `freebayes` in Task 4!
 :::
 
 ---
@@ -1097,7 +1094,7 @@ for v in VCF("brca1_variants.vcf"):
 - No filtering → you filter
 - QUAL (site) vs GL/GQ (genotype)
 - Normalize indels before comparing
-- **Output**: 168 → 25 variants
+- **Output**: raw → filtered VCF
 
 [[0,2]]{ .blue }
 ### cyvcf2 · pysam · ClinVar
