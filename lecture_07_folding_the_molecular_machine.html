@@ -28,12 +28,54 @@ html, body {
 .smaller-table td {
     font-size: 80%;
 }
+
+.matrix-container.cards > .matrix-cell,
+.matrix-cell.card {
+    background: var(--secondary-bg);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+.matrix-container.accent, .matrix-cell.accent { --cell-accent: var(--accent-color); }
+.matrix-container.purple, .matrix-cell.purple { --cell-accent: #9C27B0; }
+.matrix-container.green,  .matrix-cell.green  { --cell-accent: #4CAF50; }
+.matrix-container.orange, .matrix-cell.orange { --cell-accent: #FF9800; }
+.matrix-container.blue,   .matrix-cell.blue   { --cell-accent: #2196F3; }
+.matrix-container.teal,   .matrix-cell.teal   { --cell-accent: #009688; }
+
+.matrix-container.cards h3,
+.matrix-container.accent h3,
+.matrix-cell.card h3,
+.matrix-cell.accent h3,
+.matrix-cell.purple h3,
+.matrix-cell.green h3,
+.matrix-cell.orange h3,
+.matrix-cell.blue h3,
+.matrix-cell.teal h3 {
+    color: var(--cell-accent, var(--header-color));
+}
+
+.matrix-container.summary > .matrix-cell {
+    padding: 20px;
+    box-sizing: border-box;
+}
+.matrix-container.summary > .matrix-cell h3 {
+    color: var(--header-color);
+}
+.matrix-container.summary > .matrix-cell h4 {
+    color: var(--cell-accent, var(--accent-color));
+    font-size: 1.3em;
+    font-weight: normal;
+    margin: 0 0 10px 0;
+}
 </style>
 
 <span style="display: none;">
-$equire{mathtools}$
-$equire{mhchem}$
-$equire{extpfeil}$
+$\require{mathtools}$
+$\require{mhchem}$
+$\require{extpfeil}$
 </span>
 
 
