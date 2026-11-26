@@ -255,6 +255,33 @@ Each amino acid residue can rotate about only **two backbone single bonds**:
 
 ---
 
+# Interactive 3D — Peptide Bond Planarity & Resonance
+
+Explore the quantum-mechanical orbitals behind peptide rigidity (open **Orbitals ▼** in the viewer to toggle delocalized $\pi$ clouds and lone pairs):
+
+:::matrix { cols="0.95fr 1.45fr" gap="25px" }
+[[0,0]]
+### 1. *trans* Peptide (`N-methylacetamide`)
+- **Planar $sp^2$ nitrogen**: bond-angle sum $= 360.0^\circ$, $\mathrm{C-N} = 1.355\text{ Å}$, locked *trans* ($\omega = 180^\circ$).
+- Toggle **`π_deloc [π1]`**: continuous 3-center $\pi$-cloud across $\mathrm{O-C-N}$ creates the rotational barrier.
+
+### 2. Non-Resonant Control (`N-methylethanamine`)
+- Replacing $\mathrm{C=O} \to \mathrm{CH_2}$ removes resonance: $\mathrm{C-N}$ stretches to **$1.45\text{ Å}$** and N pops **pyramidal** ($sp^3$, angle sum $= 332^\circ$).
+- Toggle **`LP(N2)`**: the lone pair stays localized on nitrogen instead of delocalizing.
+
+### 3. Forced *cis* Peptide (`piperazine-2,5-dione`)
+- Cyclic ring geometry locks both amides at **$\omega = -2^\circ$ (*cis*)**, while keeping both nitrogens planar ($360^\circ$) and $\pi$-conjugated.
+
+[[0,1]]
+:::molecule {width="100%" height=460px sidebar="collapsed" theme="auto"}
+N-Methylacetamide (trans peptide, ω = 180°): ./lecture_07_folding_the_molecular_machine/bundles/N-methylacetamide.zip
+N-Methylethanamine (sp³ amine control): ./lecture_07_folding_the_molecular_machine/bundles/N-methylethanamine.zip
+Piperazine-2,5-dione (forced cis, ω = −2°): ./lecture_07_folding_the_molecular_machine/bundles/piperazine-2,5-dione.zip
+:::
+:::
+
+---
+
 # Extracting Dihedral Angles with `PPBuilder`
 
 Biopython provides `PPBuilder` (Polypeptide Builder) to navigate backbone chains and compute $(\phi, \psi)$ angles:
@@ -341,6 +368,32 @@ $$\psi \approx -40^\circ \text{ to } -50^\circ$$
 $$\phi \approx +60^\circ, \quad \psi \approx +40^\circ$$
 - Sterically forbidden for 19 of the 20 amino acids because side chains collide with the backbone!
 - **Glycine Exception**: Having only a single hydrogen atom ($-\text{H}$), Glycine easily populates this quadrant.
+:::
+
+---
+
+# Interactive 3D — Glycine vs. L-Alanine Dipeptides
+
+Capped dipeptides (`Ace–Xaa–NMe`) flank one central $C\alpha$ hinge with two rigid *trans* peptide planes ($\omega \approx 180^\circ$):
+
+:::matrix { cols="0.95fr 1.45fr" gap="25px" }
+[[0,0]]
+### 1. Glycine (`Ace–Gly–NMe`)
+- Achiral $C\alpha$ carries only two $-\mathrm{H}$ atoms — zero $C\beta$ side-chain clash.
+- Freely populates the **positive-$\phi$ half** of the Ramachandran map (this optimized extended $C_5$ conformer sits at **$\phi = +136^\circ, \psi = -170^\circ$**).
+
+### 2. L-Alanine (`Ace–L-Ala–NMe`)
+- Adding a single $C\beta$ methyl group introduces **$(2S)$ chirality** and steric hindrance against flanking carbonyl oxygens.
+- Favors the **negative-$\phi$ half** (here in its compact $C_7^{\text{eq}}$ conformer at **$\phi = -81^\circ, \psi = +74^\circ$**, stabilized by a $1.98\text{ Å}$ intramolecular $\mathrm{N-H\cdots O}$ H-bond).
+
+### What to Inspect
+- Toggle **`π_deloc [π1]`** on both amides: the two flat $\pi$-planes stay rigid while all conformational freedom concentrates at the tetrahedral $C\alpha$ hinge ($\phi, \psi$).
+
+[[0,1]]
+:::molecule {width="100%" height=460px sidebar="collapsed" theme="auto"}
+Ace–Gly–NMe (Glycine, φ = +136°, ψ = −170°): ./lecture_07_folding_the_molecular_machine/bundles/2-acetamido-N-methylacetamide.zip
+Ace–L-Ala–NMe (L-Alanine, φ = −81°, ψ = +74°): ./lecture_07_folding_the_molecular_machine/bundles/(2S)-2-acetamido-N-methylpropanamide.zip
+:::
 :::
 
 ---
