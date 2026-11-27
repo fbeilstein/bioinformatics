@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Live Canonical k-mer & Bottom-s MinHash Sketcher</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228;
+      --surface-dark: #2a2e37;
+      --surface2-dark: #181a20;
+      --border-dark: #3d4350;
+      --text-dark: #e8ecf2;
+      --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6;
+      --good-dark: #66bb6a;
+      --warn-dark: #ffb74d;
+      --bad-dark: #ef5350;
+      --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb;
+      --surface-light: #ffffff;
+      --surface2-light: #eef2f7;
+      --border-light: #d4dce6;
+      --text-light: #1a202c;
+      --muted-light: #5a6578;
+      --accent-light: #1565c0;
+      --good-light: #2e7d32;
+      --warn-light: #e65100;
+      --bad-light: #c62828;
+      --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+      --purple: var(--purple-dark);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+        --bad: var(--bad-light); --purple: var(--purple-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+      --bad: var(--bad-light); --purple: var(--purple-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 12px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.32;
+      accent-color: var(--accent);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 10px;
+    }
+    .ctrl { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+    .ctrl label { color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .ctrl output { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; min-width: 20px; }
+    .ctrl input[type="range"] { width: 82px; cursor: pointer; }
+
+    .btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme .btn.primary { color: #0c1726; }
+    .btn.active { border-color: var(--accent); color: var(--accent); }
+
+    .seq-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .seq-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 9px;
+    }
+    .seq-box label { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+    .seq-box input {
+      width: 100%;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 5px 7px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 8px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .card-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .step-banner {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 9px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .tag { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .tag.push { background: rgba(76, 175, 80, 0.22); color: var(--good); }
+    .tag.skip { background: rgba(150, 160, 175, 0.20); color: var(--muted); }
+    .tag.dup  { background: rgba(255, 152, 0, 0.22); color: var(--warn); }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .chip {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .chip.shared { border-color: var(--good); background: rgba(76, 175, 80, 0.2); color: var(--good); font-weight: 700; }
+    .chip.onlyA  { border-color: var(--accent); color: var(--accent); }
+    .chip.onlyB  { border-color: var(--warn); color: var(--warn); }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+    .stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+    .stat .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; }
+    .stat .v { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 14px; font-weight: 700; margin-top: 1px; }
+    svg.vis { width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="ctrl">
+    <label for="sl-k">k</label>
+    <input id="sl-k" type="range" min="3" max="9" value="5">
+    <output id="out-k">5</output>
+  </div>
+  <div class="ctrl">
+    <label for="sl-s">Sketch s</label>
+    <input id="sl-s" type="range" min="4" max="15" value="7">
+    <output id="out-s">7</output>
+  </div>
+  <div class="ctrl">
+    <label for="chk-canon"><input id="chk-canon" type="checkbox" checked> Canonical k-mers</label>
+  </div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-left:auto">
+    <button type="button" class="btn" data-preset="rc">Reverse Complement</button>
+    <button type="button" class="btn active" data-preset="species">Same Species (3%)</button>
+    <button type="button" class="btn" data-preset="genus">Divergent (12%)</button>
+    <button type="button" class="btn" data-preset="err">1 Sequencing Error</button>
+  </div>
+</div>
+
+<div class="seq-grid">
+  <div class="seq-box">
+    <label for="inp-a"><span style="color:var(--accent)">Sequence A (streamed into Max-Heap)</span><span id="len-a"></span></label>
+    <input id="inp-a" type="text" spellcheck="false" autocomplete="off">
+  </div>
+  <div class="seq-box">
+    <label for="inp-b"><span style="color:var(--warn)">Sequence B (comparison sketch)</span><span id="len-b"></span></label>
+    <input id="inp-b" type="text" spellcheck="false" autocomplete="off">
+  </div>
+</div>
+
+<div class="bar" style="padding:6px 10px">
+  <button type="button" class="btn primary" id="btn-play">▶ Play Stream</button>
+  <button type="button" class="btn" id="btn-step">Step +1</button>
+  <button type="button" class="btn" id="btn-end">⏭ Finish All</button>
+  <button type="button" class="btn" id="btn-reset">↺ Reset</button>
+  <div class="step-banner" id="step-info" style="flex:1;margin-left:4px">
+    Press Step or Play to watch k-mers stream into the size-s Max-Heap.
+  </div>
+</div>
+
+<div class="card" style="padding:7px 10px">
+  <div class="card-title">
+    <span>Unit Hash Line [0, 1) — Bottom-s Density &amp; Cardinality Estimate Ĝ = s / h<sub>(s)</sub></span>
+    <span id="card-badge" style="font-family:ui-monospace,monospace;color:var(--accent)"></span>
+  </div>
+  <svg id="svg-line" class="vis" viewBox="0 0 820 82" role="img" aria-label="Hash values mapped onto unit interval showing bottom-s cutoff"></svg>
+</div>
+
+<div class="main-grid">
+  <div class="card">
+    <div class="card-title">
+      <span>Sequence A Max-Heap (Root = h<sub>max</sub>)</span>
+      <span id="heap-ops" style="font-family:ui-monospace,monospace"></span>
+    </div>
+    <svg id="svg-heap" class="vis" viewBox="0 0 420 158" role="img" aria-label="Binary max-heap of s smallest hashes"></svg>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>O(s) Sorted Merge: W = min<sub>s</sub>(S(A) ∪ S(B))</span>
+      <span id="merge-count" style="font-family:ui-monospace,monospace;color:var(--good)"></span>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:3px">Merged bottom-s hashes (<span style="color:var(--good);font-weight:700">green = shared</span>, <span style="color:var(--accent)">blue = A only</span>, <span style="color:var(--warn)">amber = B only</span>):</div>
+    <div id="merge-chips" class="chips"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px" id="merge-formula"></div>
+  </div>
+</div>
+
+<div class="stats-row">
+  <div class="stat"><div class="k">Exact Jaccard J</div><div class="v" id="st-jtrue">—</div></div>
+  <div class="stat"><div class="k">MinHash Ĵ</div><div class="v" id="st-jhat" style="color:var(--good)">—</div></div>
+  <div class="stat"><div class="k">Mash Distance D</div><div class="v" id="st-d">—</div></div>
+  <div class="stat"><div class="k">Est. Ĝ / True |A|</div><div class="v" id="st-g">—</div></div>
+  <div class="stat"><div class="k">Heap Updates</div><div class="v" id="st-upd">—</div></div>
+</div>
+
+<script>
+(() => {
+  // ---- Theme Sync ----
+  function applyTheme(theme) {
+    const r = document.documentElement;
+    r.classList.toggle('light-theme', theme === 'light');
+    r.classList.toggle('dark-theme', theme === 'dark');
+    r.style.colorScheme = theme;
+    render();
+  }
+  window.addEventListener('message', e => { if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme); });
+  try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+  if (!CSS.supports('accent-color', 'auto')) {
+    document.querySelectorAll('input[type="range"]').forEach(sl => {
+      const upd = () => sl.style.setProperty('--progress', `${((sl.value - sl.min) / (sl.max - sl.min)) * 100}%`);
+      upd(); sl.addEventListener('input', upd);
+    });
+  }
+
+  // ---- MurmurHash3 x86-32 (exact avalanche mixing) ----
+  function murmur3_32(str, seed = 42) {
+    let h1 = seed >>> 0;
+    const c1 = 0xcc9e2d51, c2 = 0x1b873593;
+    const len = str.length;
+    let i = 0;
+    while (i + 4 <= len) {
+      let k1 = (str.charCodeAt(i) & 0xff) | ((str.charCodeAt(i + 1) & 0xff) << 8) |
+               ((str.charCodeAt(i + 2) & 0xff) << 16) | ((str.charCodeAt(i + 3) & 0xff) << 24);
+      k1 = Math.imul(k1, c1);
+      k1 = (k1 << 15) | (k1 >>> 17);
+      k1 = Math.imul(k1, c2);
+      h1 ^= k1;
+      h1 = (h1 << 13) | (h1 >>> 19);
+      h1 = (Math.imul(h1, 5) + 0xe6546b64) >>> 0;
+      i += 4;
+    }
+    let k1 = 0;
+    switch (len & 3) {
+      case 3: k1 ^= (str.charCodeAt(i + 2) & 0xff) << 16;
+      case 2: k1 ^= (str.charCodeAt(i + 1) & 0xff) << 8;
+      case 1: k1 ^= (str.charCodeAt(i) & 0xff);
+        k1 = Math.imul(k1, c1);
+        k1 = (k1 << 15) | (k1 >>> 17);
+        k1 = Math.imul(k1, c2);
+        h1 ^= k1;
+    }
+    h1 ^= len;
+    h1 ^= h1 >>> 16;
+    h1 = Math.imul(h1, 0x85ebca6b);
+    h1 ^= h1 >>> 13;
+    h1 = Math.imul(h1, 0xc2b2ae35);
+    h1 ^= h1 >>> 16;
+    return (h1 >>> 0) / 4294967296;
+  }
+
+  const COMP = { A: 'T', T: 'A', C: 'G', G: 'C' };
+  function revComp(s) {
+    let out = '';
+    for (let i = s.length - 1; i >= 0; i--) out += COMP[s[i]] || s[i];
+    return out;
+  }
+  function canonical(km, useCanon) {
+    if (!useCanon) return km;
+    const rc = revComp(km);
+    return km < rc ? km : rc;
+  }
+
+  // Deterministic 64-bp base sequence
+  const BASE_A = 'ACGTTAGCTGACCGTAATGCTTAGGCTAACCGTTACGATGCAGTCCTGATGCAATCGTAGCGTA';
+  function mutateAt(s, indices) {
+    const arr = s.split('');
+    const alt = { A: 'G', G: 'T', T: 'C', C: 'A' };
+    indices.forEach(idx => { if (idx < arr.length) arr[idx] = alt[arr[idx]]; });
+    return arr.join('');
+  }
+  const PRESETS = {
+    rc:      () => [BASE_A, revComp(BASE_A)],
+    species: () => [BASE_A, mutateAt(BASE_A, [14, 46])],
+    genus:   () => [BASE_A, mutateAt(BASE_A, [5, 13, 21, 29, 37, 45, 53, 59])],
+    err:     () => [BASE_A, mutateAt(BASE_A, [31])]
+  };
+
+  // Max-heap helpers (stores objects { u, km })
+  function heapPush(h, item) {
+    h.push(item);
+    let i = h.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (h[p].u >= h[i].u) break;
+      [h[p], h[i]] = [h[i], h[p]];
+      i = p;
+    }
+  }
+  function heapReplaceRoot(h, item) {
+    h[0] = item;
+    let i = 0, n = h.length;
+    while (true) {
+      let l = 2 * i + 1, r = 2 * i + 2, best = i;
+      if (l < n && h[l].u > h[best].u) best = l;
+      if (r < n && h[r].u > h[best].u) best = r;
+      if (best === i) break;
+      [h[i], h[best]] = [h[best], h[i]];
+      i = best;
+    }
+  }
+
+  const slK = document.getElementById('sl-k');
+  const slS = document.getElementById('sl-s');
+  const chkCanon = document.getElementById('chk-canon');
+  const inpA = document.getElementById('inp-a');
+  const inpB = document.getElementById('inp-b');
+  const btnPlay = document.getElementById('btn-play');
+
+  let stepIdx = 0;
+  let timer = null;
+
+  function cleanSeq(v) { return v.toUpperCase().replace(/[^ACGT]/g, ''); }
+  function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  function extractKmers(seq, k, useCanon) {
+    const list = [];
+    for (let i = 0; i <= seq.length - k; i++) {
+      const raw = seq.slice(i, i + k);
+      const rc = revComp(raw);
+      const can = useCanon ? (raw < rc ? raw : rc) : raw;
+      list.push({ pos: i, raw, rc, can, u: murmur3_32(can) });
+    }
+    return list;
+  }
+
+  function simulateHeap(kmers, s, limit) {
+    const heap = [];
+    const seen = new Set();
+    let updates = 0;
+    let lastEvent = null;
+    const n = Math.min(limit, kmers.length);
+    for (let i = 0; i < n; i++) {
+      const item = kmers[i];
+      if (seen.has(item.can)) {
+        lastEvent = { type: 'dup', item, msg: 'Duplicate canonical k-mer → skip' };
+        continue;
+      }
+      seen.add(item.can);
+      if (heap.length < s) {
+        heapPush(heap, item);
+        updates++;
+        lastEvent = { type: 'push', item, msg: `Heap < s → PUSH (${heap.length}/${s})` };
+      } else if (item.u < heap[0].u) {
+        const evicted = heap[0].u;
+        heapReplaceRoot(heap, item);
+        updates++;
+        lastEvent = { type: 'push', item, msg: `h < root (${evicted.toFixed(3)}) → EVICT & PUSH` };
+      } else {
+        lastEvent = { type: 'skip', item, msg: `h ≥ root (${heap[0].u.toFixed(3)}) → O(1) REJECT` };
+      }
+    }
+    return { heap, seen, updates, lastEvent, processed: n };
+  }
+
+  function stopPlay() {
+    if (timer) { clearInterval(timer); timer = null; btnPlay.textContent = '▶ Play Stream'; }
+  }
+
+  function render() {
+    const k = +slK.value;
+    const s = +slS.value;
+    const useCanon = chkCanon.checked;
+    document.getElementById('out-k').textContent = k;
+    document.getElementById('out-s').textContent = s;
+
+    const seqA = cleanSeq(inpA.value);
+    const seqB = cleanSeq(inpB.value);
+    document.getElementById('len-a').textContent = `${seqA.length} bp (${Math.max(0, seqA.length - k + 1)} k-mers)`;
+    document.getElementById('len-b').textContent = `${seqB.length} bp (${Math.max(0, seqB.length - k + 1)} k-mers)`;
+
+    const kmA = extractKmers(seqA, k, useCanon);
+    const kmB = extractKmers(seqB, k, useCanon);
+    if (stepIdx > kmA.length) stepIdx = kmA.length;
+
+    const simA = simulateHeap(kmA, s, stepIdx);
+    const simB = simulateHeap(kmB, s, kmB.length);
+
+    // Full unique sets for true Jaccard
+    const setA_all = new Set(kmA.map(x => x.can));
+    const setB_all = new Set(kmB.map(x => x.can));
+    let interAll = 0;
+    setA_all.forEach(x => { if (setB_all.has(x)) interAll++; });
+    const unionAll = setA_all.size + setB_all.size - interAll;
+    const jTrue = unionAll ? interAll / unionAll : 0;
+
+    // Sorted sketches S(A) [current state] and S(B)
+    const sketchA = [...simA.heap].sort((a, b) => a.u - b.u);
+    const sketchB = [...simB.heap].sort((a, b) => a.u - b.u);
+
+    // Step banner
+    const stepEl = document.getElementById('step-info');
+    if (!simA.lastEvent) {
+      stepEl.innerHTML = `<span>Stream ready (${kmA.length} k-mers). Click <b>Play Stream</b>, <b>Step +1</b>, or <b>Finish All</b>.</span>`;
+    } else {
+      const ev = simA.lastEvent;
+      const cls = ev.type === 'push' ? 'push' : ev.type === 'dup' ? 'dup' : 'skip';
+      stepEl.innerHTML =
+        `<span><b>#${simA.processed}/${kmA.length}</b> ${ev.item.raw}${useCanon ? ` → canon <b>${ev.item.can}</b>` : ''}</span>` +
+        `<span>h = <b>${ev.item.u.toFixed(4)}</b></span>` +
+        `<span class="tag ${cls}">${ev.msg}</span>`;
+    }
+
+    // Unit interval [0, 1) SVG
+    const cAcc = getCSS('--accent'), cWarn = getCSS('--warn'), cGood = getCSS('--good');
+    const cMut = getCSS('--muted'), cBord = getCSS('--border'), cTxt = getCSS('--text'), cPurp = getCSS('--purple');
+    const svgL = document.getElementById('svg-line');
+    const pL = 24, pR = 24, lw = 820 - pL - pR;
+    const xU = u => pL + u * lw;
+    let lHtml = '';
+    lHtml += `<line x1="${pL}" y1="42" x2="${pL + lw}" y2="42" stroke="${cBord}" stroke-width="2.5"/>`;
+    for (let t = 0; t <= 10; t++) {
+      const u = t / 10, x = xU(u);
+      lHtml += `<line x1="${x}" y1="37" x2="${x}" y2="47" stroke="${cMut}" stroke-width="1"/>`;
+      lHtml += `<text x="${x}" y="62" text-anchor="middle" fill="${cMut}" font-size="10.5">${u.toFixed(1)}</text>`;
+    }
+    // All processed hashes of A (faint ticks)
+    for (let i = 0; i < simA.processed; i++) {
+      const x = xU(kmA[i].u);
+      lHtml += `<line x1="${x}" y1="30" x2="${x}" y2="41" stroke="${cMut}" opacity="0.35" stroke-width="1.2"/>`;
+    }
+    // Bottom-s of A (top blue dots) and B (bottom amber dots)
+    const mapA = new Map(sketchA.map(x => [x.can, x]));
+    const mapB = new Map(sketchB.map(x => [x.can, x]));
+    sketchA.forEach(item => {
+      const shared = mapB.has(item.can);
+      lHtml += `<circle cx="${xU(item.u)}" cy="26" r="${shared ? 5 : 4}" fill="${shared ? cGood : cAcc}" stroke="#fff" stroke-width="1"/>`;
+    });
+    sketchB.forEach(item => {
+      const shared = mapA.has(item.can);
+      lHtml += `<circle cx="${xU(item.u)}" cy="52" r="${shared ? 5 : 4}" fill="${shared ? cGood : cWarn}" stroke="#fff" stroke-width="1"/>`;
+    });
+    // h_(s) cutoff marker for A
+    const hMax = simA.heap.length ? simA.heap[0].u : null;
+    if (hMax !== null) {
+      const xCut = xU(hMax);
+      lHtml += `<rect x="${pL}" y="14" width="${Math.max(0, xCut - pL)}" height="28" fill="${cAcc}" opacity="0.10"/>`;
+      lHtml += `<line x1="${xCut}" y1="10" x2="${xCut}" y2="68" stroke="${cPurp}" stroke-width="2" stroke-dasharray="4,3"/>`;
+      lHtml += `<text x="${Math.min(730, xCut + 5)}" y="17" fill="${cPurp}" font-size="11" font-weight="700">h₍ₛ₎ = ${hMax.toFixed(3)}</text>`;
+    }
+    lHtml += `<text x="${pL}" y="12" fill="${cAcc}" font-size="10.5" font-weight="700">● S(A) top row</text>`;
+    lHtml += `<text x="${pL + 96}" y="12" fill="${cWarn}" font-size="10.5" font-weight="700">● S(B) bottom row</text>`;
+    lHtml += `<text x="${pL + 216}" y="12" fill="${cGood}" font-size="10.5" font-weight="700">● Shared</text>`;
+    svgL.innerHTML = lHtml;
+
+    // Max-Heap binary tree SVG
+    const svgH = document.getElementById('svg-heap');
+    let hHtml = '';
+    const H = simA.heap;
+    if (H.length === 0) {
+      hHtml = `<text x="210" y="82" text-anchor="middle" fill="${cMut}" font-size="12.5">Heap empty — step or play to insert hashes</text>`;
+    } else {
+      const coords = H.map((_, idx) => {
+        const lvl = Math.floor(Math.log2(idx + 1));
+        const posInLvl = idx - ((1 << lvl) - 1);
+        const countInLvl = 1 << lvl;
+        const x = (420 / (countInLvl + 1)) * (posInLvl + 1);
+        const y = 24 + lvl * 38;
+        return { x, y };
+      });
+      // Edges
+      for (let i = 1; i < H.length; i++) {
+        const p = (i - 1) >> 1;
+        hHtml += `<line x1="${coords[p].x}" y1="${coords[p].y}" x2="${coords[i].x}" y2="${coords[i].y}" stroke="${cBord}" stroke-width="1.5"/>`;
+      }
+      // Nodes
+      H.forEach((item, i) => {
+        const { x, y } = coords[i];
+        const isRoot = i === 0;
+        const fill = isRoot ? cPurp : cAcc;
+        hHtml += `<rect x="${x - 24}" y="${y - 12}" width="48" height="24" rx="12" fill="${fill}" opacity="${isRoot ? 0.92 : 0.78}"/>`;
+        hHtml += `<text x="${x}" y="${y + 4}" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700">${item.u.toFixed(3)}</text>`;
+      });
+    }
+    svgH.innerHTML = hHtml;
+    document.getElementById('heap-ops').textContent = `${H.length}/${s} slots`;
+
+    // Two-pointer O(s) sorted merge W = min_s(S(A) ∪ S(B))
+    const mergedMap = new Map();
+    sketchA.forEach(it => mergedMap.set(it.can, { u: it.u, km: it.can, inA: true, inB: false }));
+    sketchB.forEach(it => {
+      if (mergedMap.has(it.can)) mergedMap.get(it.can).inB = true;
+      else mergedMap.set(it.can, { u: it.u, km: it.can, inA: false, inB: true });
+    });
+    const W = Array.from(mergedMap.values()).sort((a, b) => a.u - b.u).slice(0, s);
+    const sharedW = W.filter(x => x.inA && x.inB).length;
+    const jHat = W.length ? sharedW / W.length : 0;
+    const mashD = jHat > 0 ? Math.max(0, -(1 / k) * Math.log((2 * jHat) / (1 + jHat))) : Infinity;
+
+    document.getElementById('merge-count').textContent = `${sharedW} / ${W.length} shared`;
+    document.getElementById('merge-chips').innerHTML = W.map(x => {
+      const cls = (x.inA && x.inB) ? 'shared' : x.inA ? 'onlyA' : 'onlyB';
+      return `<span class="chip ${cls}" title="${x.km}">${x.u.toFixed(3)} · ${x.km}</span>`;
+    }).join('');
+    document.getElementById('merge-formula').innerHTML =
+      `Ĵ = |W ∩ S(A) ∩ S(B)| / |W| = <b>${sharedW}/${W.length}</b> = <b>${jHat.toFixed(3)}</b> · ` +
+      `SE = √(J(1−J)/s) ≈ <b>${Math.sqrt(jTrue * (1 - jTrue) / s).toFixed(3)}</b>`;
+
+    // Cardinality estimate
+    const gHat = (simA.heap.length === s && hMax > 0) ? Math.round(s / hMax) : null;
+    document.getElementById('card-badge').textContent = gHat !== null
+      ? `Ĝ = ${s} / ${hMax.toFixed(3)} ≈ ${gHat} unique k-mers (true seen: ${simA.seen.size})`
+      : `Fill heap to s=${s} to estimate Ĝ`;
+
+    // Stats strip
+    document.getElementById('st-jtrue').textContent = jTrue.toFixed(3);
+    document.getElementById('st-jhat').textContent = jHat.toFixed(3);
+    document.getElementById('st-d').textContent = isFinite(mashD) ? mashD.toFixed(4) : '∞ (0 hits)';
+    document.getElementById('st-g').textContent = gHat !== null ? `${gHat} / ${simA.seen.size}` : `— / ${simA.seen.size}`;
+    document.getElementById('st-upd').textContent = `${simA.updates} / ${simA.processed}`;
+  }
+
+  function loadPreset(key) {
+    stopPlay();
+    const [a, b] = PRESETS[key]();
+    inpA.value = a;
+    inpB.value = b;
+    document.querySelectorAll('[data-preset]').forEach(btn => btn.classList.toggle('active', btn.dataset.preset === key));
+    stepIdx = Math.max(0, a.length - (+slK.value) + 1);
+    render();
+  }
+
+  slK.addEventListener('input', () => { stopPlay(); stepIdx = Math.max(0, cleanSeq(inpA.value).length - (+slK.value) + 1); render(); });
+  slS.addEventListener('input', () => { stopPlay(); render(); });
+  chkCanon.addEventListener('change', render);
+  inpA.addEventListener('input', () => { stopPlay(); stepIdx = Math.max(0, cleanSeq(inpA.value).length - (+slK.value) + 1); render(); });
+  inpB.addEventListener('input', render);
+  document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => loadPreset(btn.dataset.preset)));
+
+  document.getElementById('btn-step').addEventListener('click', () => {
+    stopPlay();
+    const maxN = Math.max(0, cleanSeq(inpA.value).length - (+slK.value) + 1);
+    if (stepIdx < maxN) stepIdx++;
+    render();
+  });
+  document.getElementById('btn-end').addEventListener('click', () => {
+    stopPlay();
+    stepIdx = Math.max(0, cleanSeq(inpA.value).length - (+slK.value) + 1);
+    render();
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    stopPlay();
+    stepIdx = 0;
+    render();
+  });
+  btnPlay.addEventListener('click', () => {
+    if (timer) { stopPlay(); return; }
+    const maxN = Math.max(0, cleanSeq(inpA.value).length - (+slK.value) + 1);
+    if (stepIdx >= maxN) stepIdx = 0;
+    btnPlay.textContent = '⏸ Pause';
+    timer = setInterval(() => {
+      if (stepIdx >= maxN) { stopPlay(); return; }
+      stepIdx++;
+      render();
+    }, 110);
+  });
+
+  loadPreset('species');
+})();
+</script>
+</body>
+</html>
+

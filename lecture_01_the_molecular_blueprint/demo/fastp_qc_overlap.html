@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>fastp QC & Paired-End Adapter Overlap Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228;
+      --surface-dark: #2a2e37;
+      --surface2-dark: #181a20;
+      --border-dark: #3d4350;
+      --text-dark: #e8ecf2;
+      --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6;
+      --good-dark: #66bb6a;
+      --warn-dark: #ffb74d;
+      --bad-dark: #ef5350;
+
+      --bg-light: #f6f8fb;
+      --surface-light: #ffffff;
+      --surface2-light: #eef2f7;
+      --border-light: #d4dce6;
+      --text-light: #1a202c;
+      --muted-light: #5a6578;
+      --accent-light: #1565c0;
+      --good-light: #2e7d32;
+      --warn-light: #e65100;
+      --bad-light: #c62828;
+
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light);
+        --surface: var(--surface-light);
+        --surface2: var(--surface2-light);
+        --border: var(--border-light);
+        --text: var(--text-light);
+        --muted: var(--muted-light);
+        --accent: var(--accent-light);
+        --good: var(--good-light);
+        --warn: var(--warn-light);
+        --bad: var(--bad-light);
+      }
+    }
+
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light);
+      --surface: var(--surface-light);
+      --surface2: var(--surface2-light);
+      --border: var(--border-light);
+      --text: var(--text-light);
+      --muted: var(--muted-light);
+      --accent: var(--accent-light);
+      --good: var(--good-light);
+      --warn: var(--warn-light);
+      --bad: var(--bad-light);
+    }
+
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 12px 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.35;
+      accent-color: var(--accent);
+    }
+
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 20px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    /* Accessible Tabs (WCAG 1.4.1 underline via ::after border, no layout shift) */
+    .tablist {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+      overflow-x: auto;
+    }
+    .tablist [role="tab"] {
+      position: relative;
+      flex: none;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 8px 14px 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tablist [role="tab"]:hover { color: var(--text); }
+    .tablist [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    .tablist [role="tab"][aria-selected="true"] { color: var(--accent); }
+    .tablist [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      border-block-end: 3px solid var(--accent);
+    }
+
+    /* Keep role=tabpanel unstyled so hidden=until-found renders zero strip */
+    .panel-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .ctrl {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12.5px;
+    }
+    .ctrl label { color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .ctrl output { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; min-width: 34px; color: var(--text); }
+    .ctrl input[type="range"] { width: 105px; cursor: pointer; }
+
+    .btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme .btn.primary { color: #0c1726; }
+    .btn.active { border-color: var(--accent); color: var(--accent); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 9px;
+    }
+    .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+    .stat .v { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 15px; font-weight: 700; margin-top: 2px; }
+
+    .decoder {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12.5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 11px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .badge.good { background: rgba(76, 175, 80, 0.2); color: var(--good); }
+    .badge.warn { background: rgba(255, 152, 0, 0.2); color: var(--warn); }
+    .badge.bad  { background: rgba(239, 83, 80, 0.2); color: var(--bad); }
+
+    svg.chart { width: 100%; height: auto; display: block; user-select: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, monospace; }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tablist" role="tablist" aria-label="fastp QC modes">
+    <button type="button" role="tab" id="tab-trim" aria-selected="true" tabindex="0">1. Sliding-Window Quality Trimmer (--cut_right)</button>
+    <button type="button" role="tab" id="tab-overlap" aria-selected="false" tabindex="-1">2. Paired-End Overlap Adapter Detector</button>
+  </div>
+
+  <!-- TAB 1: SLIDING WINDOW TRIMMER -->
+  <div role="tabpanel" id="panel-trim" aria-labelledby="tab-trim">
+    <div class="panel-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label for="sl-w">Window W</label>
+          <input id="sl-w" type="range" min="1" max="10" value="4">
+          <output id="out-w">4</output>
+        </div>
+        <div class="ctrl">
+          <label for="sl-q">Cutoff Q</label>
+          <input id="sl-q" type="range" min="10" max="34" value="20">
+          <output id="out-q">20</output>
+        </div>
+        <div class="ctrl">
+          <label for="sl-pos">Inspect i</label>
+          <input id="sl-pos" type="range" min="0" max="76" value="0">
+          <output id="out-pos">1</output>
+        </div>
+        <button type="button" class="btn primary" id="btn-play">▶ Sweep</button>
+        <button type="button" class="btn" data-preset="decay">3' Decay</button>
+        <button type="button" class="btn" data-preset="dip">Mid-Read Dip</button>
+        <button type="button" class="btn" data-preset="clean">High-Q Clean</button>
+      </div>
+
+      <div class="card">
+        <svg id="svg-trim" class="chart" viewBox="0 0 820 225" role="img" aria-label="Per-base Phred quality bar chart with sliding window"></svg>
+      </div>
+
+      <div class="decoder" id="decoder-bar">
+        Hover or click any base bar above to decode its Phred+33 ASCII character.
+      </div>
+
+      <div class="stats-row">
+        <div class="stat"><div class="k">Trim Cut Point</div><div class="v" id="st-cut">—</div></div>
+        <div class="stat"><div class="k">Window Mean Q̄ᵢ</div><div class="v" id="st-wmean">—</div></div>
+        <div class="stat"><div class="k">Q20% (Raw → Clean)</div><div class="v" id="st-q20">—</div></div>
+        <div class="stat"><div class="k">Q30% (Raw → Clean)</div><div class="v" id="st-q30">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: PAIRED-END OVERLAP ADAPTER DETECTOR -->
+  <div role="tabpanel" id="panel-overlap" aria-labelledby="tab-overlap" hidden="until-found">
+    <div class="panel-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label for="sl-ins">Insert Size I (bp)</label>
+          <input id="sl-ins" type="range" min="52" max="140" value="76">
+          <output id="out-ins">76 bp</output>
+        </div>
+        <div class="ctrl">
+          <label for="chk-err"><input id="chk-err" type="checkbox"> 2% Sequencing Errors</label>
+        </div>
+        <div class="ctrl" style="margin-left:auto">
+          <span style="color:var(--muted);font-weight:600">Read Length L = 100 bp</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <svg id="svg-ov-geom" class="chart" viewBox="0 0 820 175" role="img" aria-label="Paired-end read overlap and adapter read-through geometry"></svg>
+      </div>
+
+      <div class="card">
+        <svg id="svg-ov-score" class="chart" viewBox="0 0 820 135" role="img" aria-label="Ungapped overlap score across candidate shifts"></svg>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat"><div class="k">Read-Through Status</div><div class="v" id="ov-status">—</div></div>
+        <div class="stat"><div class="k">Detected Overlap</div><div class="v" id="ov-len">—</div></div>
+        <div class="stat"><div class="k">Adapter Trimmed / Read</div><div class="v" id="ov-trim">—</div></div>
+        <div class="stat"><div class="k">Peak Match Identity</div><div class="v" id="ov-id">—</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---- Theme sync with parent slides.js (explicit iframe handshake + class on <html>) ----
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    root.classList.toggle('light-theme', theme === 'light');
+    root.classList.toggle('dark-theme', theme === 'dark');
+    root.style.colorScheme = theme;
+    renderAll();
+  }
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+  });
+  try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+  // Fallback range progress for browsers without accent-color
+  if (!CSS.supports('accent-color', 'auto')) {
+    document.querySelectorAll('input[type="range"]').forEach(sl => {
+      const upd = () => {
+        const pct = ((sl.value - sl.min) / (sl.max - sl.min)) * 100;
+        sl.style.setProperty('--progress', `${pct}%`);
+      };
+      upd();
+      sl.addEventListener('input', upd);
+    });
+  }
+
+  // ---- Accessible Tabs (roving tabindex + arrow keys + beforematch) ----
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  const panels = tabs.map(t => document.querySelector(`[aria-labelledby="${t.id}"]`));
+
+  function selectTab(idx, focus = false) {
+    tabs.forEach((t, i) => {
+      const active = i === idx;
+      t.setAttribute('aria-selected', String(active));
+      t.tabIndex = active ? 0 : -1;
+      if (active) {
+        panels[i].removeAttribute('hidden');
+      } else {
+        panels[i].setAttribute('hidden', 'until-found');
+      }
+    });
+    if (focus) tabs[idx].focus();
+    renderAll();
+  }
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => selectTab(i));
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); selectTab((i + 1) % tabs.length, true); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); selectTab((i - 1 + tabs.length) % tabs.length, true); }
+      else if (e.key === 'Home') { e.preventDefault(); selectTab(0, true); }
+      else if (e.key === 'End') { e.preventDefault(); selectTab(tabs.length - 1, true); }
+    });
+  });
+  panels.forEach((p, i) => p.addEventListener('beforematch', () => selectTab(i)));
+
+  // ---- Tab 1: Sliding-Window Quality Trimmer ----
+  const READ_LEN = 80;
+  const BASES = 'ACGT';
+  function makeSeededRead(mode) {
+    let seed = mode === 'decay' ? 42 : mode === 'dip' ? 137 : 999;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const seq = [];
+    const qual = [];
+    for (let i = 0; i < READ_LEN; i++) {
+      seq.push(BASES[Math.floor(rand() * 4)]);
+      let q;
+      if (mode === 'decay') {
+        const drop = i < 46 ? 0 : Math.pow((i - 45) / 35, 1.85) * 30;
+        q = Math.round(37 - drop + (rand() - 0.5) * 6);
+      } else if (mode === 'dip') {
+        const dip = Math.exp(-Math.pow((i - 34) / 3.2, 2)) * 24;
+        const tail = i < 62 ? 0 : (i - 61) * 1.1;
+        q = Math.round(36 - dip - tail + (rand() - 0.5) * 5);
+      } else {
+        q = Math.round(36 - (i / 80) * 5 + (rand() - 0.5) * 4);
+      }
+      qual.push(Math.max(2, Math.min(41, q)));
+    }
+    return { seq, qual };
+  }
+
+  let currentRead = makeSeededRead('decay');
+  let hoverIdx = 56;
+  let animTimer = null;
+
+  const slW = document.getElementById('sl-w');
+  const slQ = document.getElementById('sl-q');
+  const slPos = document.getElementById('sl-pos');
+  const btnPlay = document.getElementById('btn-play');
+
+  function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  function computeTrim(qual, W, Qth) {
+    // Prefix sums for O(L) sliding window
+    const pref = new Float64Array(qual.length + 1);
+    for (let i = 0; i < qual.length; i++) pref[i + 1] = pref[i] + qual[i];
+    const means = [];
+    let cutAt = qual.length;
+    for (let i = 0; i <= qual.length - W; i++) {
+      const m = (pref[i + W] - pref[i]) / W;
+      means.push(m);
+      if (cutAt === qual.length && m < Qth) cutAt = i;
+    }
+    return { means, cutAt };
+  }
+
+  function updateDecoder(idx) {
+    const b = currentRead.seq[idx];
+    const q = currentRead.qual[idx];
+    const ascii = q + 33;
+    const ch = String.fromCharCode(ascii);
+    const perr = Math.pow(10, -q / 10);
+    const acc = (1 - perr) * 100;
+    const cls = q >= 30 ? 'good' : q >= 20 ? 'warn' : 'bad';
+    document.getElementById('decoder-bar').innerHTML =
+      `<span><b>Pos ${idx + 1}</b> · Base <b>${b}</b></span>` +
+      `<span>ASCII <code>'${ch === '<' ? '&lt;' : ch === '&' ? '&amp;' : ch}'</code> (${ascii}) − 33 = <span class="badge ${cls}">Q${q}</span></span>` +
+      `<span>P<sub>err</sub> = <b>${perr < 0.001 ? perr.toExponential(1) : (perr * 100).toFixed(2) + '%'}</b> · Acc = <b>${acc.toFixed(2)}%</b></span>`;
+  }
+
+  function renderTrim() {
+    const W = +slW.value;
+    const Qth = +slQ.value;
+    slPos.max = READ_LEN - W;
+    if (+slPos.value > READ_LEN - W) slPos.value = READ_LEN - W;
+    const pos = +slPos.value;
+
+    document.getElementById('out-w').textContent = W;
+    document.getElementById('out-q').textContent = Qth;
+    document.getElementById('out-pos').textContent = pos + 1;
+
+    const { means, cutAt } = computeTrim(currentRead.qual, W, Qth);
+    const svg = document.getElementById('svg-trim');
+    const padL = 42, padR = 16, padT = 16, padB = 34;
+    const cw = 820 - padL - padR, ch = 225 - padT - padB;
+    const bw = cw / READ_LEN;
+    const yScale = (q) => padT + ch * (1 - q / 44);
+
+    const cGood = getCSS('--good'), cWarn = getCSS('--warn'), cBad = getCSS('--bad');
+    const cAcc = getCSS('--accent'), cMut = getCSS('--muted'), cBord = getCSS('--border'), cTxt = getCSS('--text');
+
+    let out = '';
+    // Grid lines
+    for (const qv of [0, 10, 20, 30, 40]) {
+      const y = yScale(qv);
+      out += `<line x1="${padL}" y1="${y}" x2="${820 - padR}" y2="${y}" stroke="${cBord}" stroke-dasharray="3,3" stroke-width="1"/>`;
+      out += `<text x="${padL - 7}" y="${y + 4}" text-anchor="end" fill="${cMut}" font-size="11">Q${qv}</text>`;
+    }
+
+    // Trimmed region shading
+    if (cutAt < READ_LEN) {
+      const cx = padL + cutAt * bw;
+      out += `<rect x="${cx}" y="${padT}" width="${(READ_LEN - cutAt) * bw}" height="${ch}" fill="${cBad}" opacity="0.11"/>`;
+    }
+
+    // Bars
+    for (let i = 0; i < READ_LEN; i++) {
+      const q = currentRead.qual[i];
+      const x = padL + i * bw + 0.8;
+      const y = yScale(q);
+      const h = yScale(0) - y;
+      const fill = q >= 30 ? cGood : q >= 20 ? cWarn : cBad;
+      const op = i >= cutAt ? 0.30 : (i >= pos && i < pos + W ? 1.0 : 0.82);
+      const stroke = i === hoverIdx ? cTxt : 'none';
+      out += `<rect data-idx="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 1.6).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}" opacity="${op}" stroke="${stroke}" stroke-width="1.4" style="cursor:pointer"/>`;
+    }
+
+    // Sliding window highlight box at pos
+    const wx = padL + pos * bw;
+    const ww = W * bw;
+    const wm = means[pos];
+    const wCol = wm < Qth ? cBad : cAcc;
+    out += `<rect x="${wx}" y="${padT}" width="${ww}" height="${ch}" fill="${wCol}" opacity="0.14" stroke="${wCol}" stroke-width="2" rx="3" pointer-events="none"/>`;
+    out += `<line x1="${wx}" y1="${yScale(wm)}" x2="${wx + ww}" y2="${yScale(wm)}" stroke="${wCol}" stroke-width="3" pointer-events="none"/>`;
+
+    // Threshold line
+    const yTh = yScale(Qth);
+    out += `<line x1="${padL}" y1="${yTh}" x2="${820 - padR}" y2="${yTh}" stroke="${cAcc}" stroke-dasharray="6,4" stroke-width="1.8" pointer-events="none"/>`;
+    out += `<text x="${820 - padR - 4}" y="${yTh - 5}" text-anchor="end" fill="${cAcc}" font-size="11" font-weight="700">Cutoff Q = ${Qth}</text>`;
+
+    // Cut marker
+    if (cutAt < READ_LEN) {
+      const cx = padL + cutAt * bw;
+      out += `<line x1="${cx}" y1="${padT}" x2="${cx}" y2="${padT + ch}" stroke="${cBad}" stroke-width="2.2" stroke-dasharray="4,3" pointer-events="none"/>`;
+      out += `<text x="${Math.min(735, cx + 6)}" y="${padT + 14}" fill="${cBad}" font-size="11.5" font-weight="700">✂ Cut @ bp ${cutAt + 1}</text>`;
+    } else {
+      out += `<text x="${820 - padR - 6}" y="${padT + 14}" text-anchor="end" fill="${cGood}" font-size="11.5" font-weight="700">✓ Full read retained (${READ_LEN} bp)</text>`;
+    }
+
+    // X-axis ticks
+    for (let i = 0; i < READ_LEN; i += 10) {
+      const tx = padL + (i + 0.5) * bw;
+      out += `<text x="${tx}" y="${225 - 12}" text-anchor="middle" fill="${cMut}" font-size="11">${i + 1}</text>`;
+    }
+    out += `<text x="${padL + cw / 2}" y="${225 - 1}" text-anchor="middle" fill="${cMut}" font-size="11">5' → Read Position (bp) → 3'</text>`;
+
+    svg.innerHTML = out;
+    svg.querySelectorAll('rect[data-idx]').forEach(r => {
+      r.addEventListener('mouseenter', () => { hoverIdx = +r.dataset.idx; updateDecoder(hoverIdx); });
+      r.addEventListener('click', () => {
+        hoverIdx = +r.dataset.idx;
+        slPos.value = Math.min(READ_LEN - W, hoverIdx);
+        renderTrim();
+      });
+    });
+
+    // Stats
+    const rawQ20 = (currentRead.qual.filter(q => q >= 20).length / READ_LEN) * 100;
+    const rawQ30 = (currentRead.qual.filter(q => q >= 30).length / READ_LEN) * 100;
+    const kept = currentRead.qual.slice(0, cutAt);
+    const clnQ20 = kept.length ? (kept.filter(q => q >= 20).length / kept.length) * 100 : 0;
+    const clnQ30 = kept.length ? (kept.filter(q => q >= 30).length / kept.length) * 100 : 0;
+
+    document.getElementById('st-cut').innerHTML = cutAt < READ_LEN
+      ? `<span style="color:var(--bad)">bp ${cutAt + 1}</span> <span style="font-size:12px;color:var(--muted)">(${cutAt} kept)</span>`
+      : `<span style="color:var(--good)">None</span> <span style="font-size:12px;color:var(--muted)">(${READ_LEN} kept)</span>`;
+    document.getElementById('st-wmean').innerHTML = `<span style="color:${wm < Qth ? 'var(--bad)' : 'var(--good)'}">${wm.toFixed(1)}</span>`;
+    document.getElementById('st-q20').textContent = `${rawQ20.toFixed(0)}% → ${clnQ20.toFixed(0)}%`;
+    document.getElementById('st-q30').textContent = `${rawQ30.toFixed(0)}% → ${clnQ30.toFixed(0)}%`;
+    updateDecoder(hoverIdx);
+  }
+
+  slW.addEventListener('input', renderTrim);
+  slQ.addEventListener('input', renderTrim);
+  slPos.addEventListener('input', renderTrim);
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      stopAnim();
+      currentRead = makeSeededRead(btn.dataset.preset);
+      slPos.value = 0;
+      renderTrim();
+    });
+  });
+
+  function stopAnim() {
+    if (animTimer) { clearInterval(animTimer); animTimer = null; btnPlay.textContent = '▶ Sweep'; }
+  }
+  btnPlay.addEventListener('click', () => {
+    if (animTimer) { stopAnim(); return; }
+    const W = +slW.value, Qth = +slQ.value;
+    const { cutAt } = computeTrim(currentRead.qual, W, Qth);
+    if (+slPos.value >= Math.min(cutAt, READ_LEN - W)) slPos.value = 0;
+    btnPlay.textContent = '⏸ Pause';
+    animTimer = setInterval(() => {
+      const next = +slPos.value + 1;
+      const limit = Math.min(cutAt, READ_LEN - W);
+      if (next > limit) { stopAnim(); return; }
+      slPos.value = next;
+      hoverIdx = next;
+      renderTrim();
+      if (next === cutAt) stopAnim();
+    }, 65);
+  });
+
+  // ---- Tab 2: Paired-End Overlap Adapter Detector ----
+  const L_READ = 100;
+  const ADAP_A = 'TCGTCGGCAGCGTCAGATGTGTATAAGAGACAGTCGTACGTACGTACGTA';
+  const ADAP_B = 'CTGTCTCTTATACACATCTCCGAGCCCACGAGACGTACGTACGTACGTAC';
+  // Fixed deterministic genomic insert pool (160 bp)
+  const INSERT_POOL = (() => {
+    let s = 20261127, str = '';
+    for (let i = 0; i < 160; i++) { s = (s * 1664525 + 1013904223) >>> 0; str += BASES[(s >>> 24) & 3]; }
+    return str;
+  })();
+
+  const slIns = document.getElementById('sl-ins');
+  const chkErr = document.getElementById('chk-err');
+
+  function renderOverlap() {
+    const I = +slIns.value;
+    const hasErr = chkErr.checked;
+    document.getElementById('out-ins').textContent = `${I} bp`;
+
+    const cGood = getCSS('--good'), cBad = getCSS('--bad'), cAcc = getCSS('--accent');
+    const cMut = getCSS('--muted'), cBord = getCSS('--border'), cTxt = getCSS('--text'), cWarn = getCSS('--warn');
+
+    // Construct R1 (100 bp) and rc(R2) (100 bp)
+    const insertSeq = INSERT_POOL.slice(0, I);
+    let r1 = (insertSeq + ADAP_B).slice(0, L_READ);
+    // rc(R2) starts at coordinate (I - L_READ) relative to insert start:
+    // if I < L_READ: left overhang of (L_READ - I) bp is Adapter A tail, followed by full insertSeq!
+    let rcR2 = I < L_READ
+      ? ADAP_A.slice(ADAP_A.length - (L_READ - I)) + insertSeq
+      : insertSeq.slice(I - L_READ, I);
+
+    if (hasErr) {
+      // Mutate 2 bases deterministically inside overlap
+      const mut = (str, pos) => str.slice(0, pos) + BASES[(BASES.indexOf(str[pos]) + 1) % 4] + str.slice(pos + 1);
+      r1 = mut(mut(r1, 18), 47);
+      rcR2 = mut(rcR2, Math.min(rcR2.length - 5, 35));
+    }
+
+    // Visual Geometry SVG
+    const svgG = document.getElementById('svg-ov-geom');
+    const scale = 3.2; // px per bp
+    const centerX = 410;
+    const insW = I * scale;
+    const insX0 = centerX - insW / 2;
+    const adapW = 140;
+    const overhang = Math.max(0, L_READ - I);
+    const readW = L_READ * scale;
+
+    let g = '';
+    // Physical fragment track (y=26)
+    g += `<text x="16" y="45" fill="${cMut}" font-size="11.5" font-weight="700">DNA Fragment</text>`;
+    g += `<rect x="${insX0 - adapW}" y="28" width="${adapW}" height="24" rx="4" fill="${cBad}" opacity="0.22" stroke="${cBad}" stroke-width="1.3"/>`;
+    g += `<text x="${insX0 - adapW / 2}" y="44" text-anchor="middle" fill="${cBad}" font-size="11" font-weight="700">Adapter A</text>`;
+    g += `<rect x="${insX0}" y="28" width="${insW}" height="24" rx="3" fill="${cGood}" opacity="0.22" stroke="${cGood}" stroke-width="1.5"/>`;
+    g += `<text x="${centerX}" y="44" text-anchor="middle" fill="${cGood}" font-size="11.5" font-weight="700">Genomic Insert (${I} bp)</text>`;
+    g += `<rect x="${insX0 + insW}" y="28" width="${adapW}" height="24" rx="4" fill="${cBad}" opacity="0.22" stroke="${cBad}" stroke-width="1.3"/>`;
+    g += `<text x="${insX0 + insW + adapW / 2}" y="44" text-anchor="middle" fill="${cBad}" font-size="11" font-weight="700">Adapter B</text>`;
+
+    // Read 1 (starts at insX0, runs right L_READ bp)
+    const r1GenW = Math.min(L_READ, I) * scale;
+    const r1AdW = overhang * scale;
+    g += `<text x="16" y="92" fill="${cAcc}" font-size="11.5" font-weight="700">Read 1 (5'→3')</text>`;
+    g += `<rect x="${insX0}" y="75" width="${r1GenW}" height="24" rx="3" fill="${cAcc}" opacity="0.78"/>`;
+    if (r1AdW > 0) {
+      g += `<rect x="${insX0 + r1GenW}" y="75" width="${r1AdW}" height="24" rx="3" fill="${cBad}" opacity="0.88"/>`;
+      g += `<text x="${insX0 + r1GenW + r1AdW / 2}" y="91" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700">✂ ${overhang} bp</text>`;
+    }
+    g += `<text x="${insX0 + r1GenW / 2}" y="91" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">R1 Genomic (${Math.min(L_READ, I)} bp)</text>`;
+
+    // revcomp(Read 2) (ends at insX0 + insW, starts at insX0 + insW - readW)
+    const r2Start = insX0 + insW - readW;
+    const r2AdW = overhang * scale;
+    const r2GenW = Math.min(L_READ, I) * scale;
+    g += `<text x="16" y="132" fill="${cWarn}" font-size="11.5" font-weight="700">revcomp(R2)</text>`;
+    if (r2AdW > 0) {
+      g += `<rect x="${r2Start}" y="115" width="${r2AdW}" height="24" rx="3" fill="${cBad}" opacity="0.88"/>`;
+      g += `<text x="${r2Start + r2AdW / 2}" y="131" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700">✂ ${overhang} bp</text>`;
+    }
+    g += `<rect x="${r2Start + r2AdW}" y="115" width="${r2GenW}" height="24" rx="3" fill="${cWarn}" opacity="0.82"/>`;
+    g += `<text x="${r2Start + r2AdW + r2GenW / 2}" y="131" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">rc(R2) Genomic (${Math.min(L_READ, I)} bp)</text>`;
+
+    // Shared overlap bracket
+    const ovLeft = Math.max(insX0, r2Start + r2AdW);
+    const ovRight = Math.min(insX0 + r1GenW, insX0 + insW);
+    if (ovRight > ovLeft) {
+      const ovBp = Math.round((ovRight - ovLeft) / scale);
+      g += `<line x1="${ovLeft}" y1="150" x2="${ovRight}" y2="150" stroke="${cGood}" stroke-width="2.5"/>`;
+      g += `<line x1="${ovLeft}" y1="145" x2="${ovLeft}" y2="155" stroke="${cGood}" stroke-width="2"/>`;
+      g += `<line x1="${ovRight}" y1="145" x2="${ovRight}" y2="155" stroke="${cGood}" stroke-width="2"/>`;
+      g += `<text x="${(ovLeft + ovRight) / 2}" y="167" text-anchor="middle" fill="${cGood}" font-size="11.5" font-weight="700">Shared Insert Overlap = ${ovBp} bp ${overhang > 0 ? '→ Overhangs = De Novo Adapter Trim!' : '(No Adapter Contamination)'}</text>`;
+    }
+    svgG.innerHTML = g;
+
+    // Shift-Overlap Alignment Scan: offset = pos of rcR2 relative to R1 (range -50 to +50)
+    // True shift of rcR2 relative to R1 is (I - L_READ)!
+    const shifts = [];
+    let bestShift = 0, bestId = 0, bestOv = 0;
+    for (let sh = -50; sh <= 50; sh++) {
+      // r1[k] aligns with rcR2[k - sh]
+      const k0 = Math.max(0, sh);
+      const k1 = Math.min(L_READ, L_READ + sh);
+      const ov = k1 - k0;
+      let matches = 0;
+      for (let k = k0; k < k1; k++) {
+        if (r1[k] === rcR2[k - sh]) matches++;
+      }
+      const id = ov >= 30 ? matches / ov : 0;
+      shifts.push({ sh, ov, id });
+      if (id > bestId) { bestId = id; bestShift = sh; bestOv = ov; }
+    }
+
+    const svgS = document.getElementById('svg-ov-score');
+    const pL = 48, pR = 16, pT = 18, pB = 28;
+    const sw = 820 - pL - pR, shH = 135 - pT - pB;
+    const xS = (s) => pL + ((s + 50) / 100) * sw;
+    const yS = (v) => pT + shH * (1 - v);
+
+    let sc = '';
+    for (const v of [0.25, 0.5, 0.75, 1.0]) {
+      const y = yS(v);
+      sc += `<line x1="${pL}" y1="${y}" x2="${820 - pR}" y2="${y}" stroke="${cBord}" stroke-dasharray="3,3"/>`;
+      sc += `<text x="${pL - 6}" y="${y + 4}" text-anchor="end" fill="${cMut}" font-size="10.5">${Math.round(v * 100)}%</text>`;
+    }
+    // Zero-shift divider (negative shift = adapter read-through, positive shift = normal insert > L)
+    sc += `<rect x="${pL}" y="${pT}" width="${sw / 2}" height="${shH}" fill="${cBad}" opacity="0.06"/>`;
+    sc += `<line x1="${xS(0)}" y1="${pT}" x2="${xS(0)}" y2="${pT + shH}" stroke="${cMut}" stroke-dasharray="4,3"/>`;
+    sc += `<text x="${pL + 6}" y="${pT + 12}" fill="${cBad}" font-size="10.5" font-weight="700">← Shift &lt; 0: Adapter Overhang (I &lt; L)</text>`;
+    sc += `<text x="${820 - pR - 6}" y="${pT + 12}" text-anchor="end" fill="${cGood}" font-size="10.5" font-weight="700">Shift ≥ 0: Clean Insert (I ≥ L) →</text>`;
+
+    // Polyline of identity score
+    const pts = shifts.map(d => `${xS(d.sh).toFixed(1)},${yS(d.id).toFixed(1)}`).join(' ');
+    sc += `<polyline points="${pts}" fill="none" stroke="${cAcc}" stroke-width="2.2"/>`;
+    if (bestId > 0.85) {
+      const px = xS(bestShift), py = yS(bestId);
+      const pCol = bestShift < 0 ? cBad : cGood;
+      sc += `<circle cx="${px}" cy="${py}" r="5" fill="${pCol}" stroke="#fff" stroke-width="1.5"/>`;
+      sc += `<text x="${Math.min(720, Math.max(pL + 70, px))}" y="${py - 7}" text-anchor="middle" fill="${pCol}" font-size="11" font-weight="700">Peak @ shift ${bestShift >= 0 ? '+' : ''}${bestShift} (${(bestId * 100).toFixed(1)}%)</text>`;
+    }
+    for (const tick of [-50, -25, 0, 25, 50]) {
+      sc += `<text x="${xS(tick)}" y="${135 - 8}" text-anchor="middle" fill="${cMut}" font-size="10.5">${tick > 0 ? '+' + tick : tick}</text>`;
+    }
+    sc += `<text x="${pL + sw / 2}" y="${135 - 1}" text-anchor="middle" fill="${cMut}" font-size="10.5">Candidate Overlap Shift (I − L, bp)</text>`;
+    svgS.innerHTML = sc;
+
+    // Stats
+    const detected = bestId >= 0.90;
+    document.getElementById('ov-status').innerHTML = overhang > 0
+      ? `<span style="color:var(--bad)">Adapter Detected!</span>`
+      : `<span style="color:var(--good)">Clean (No Adapter)</span>`;
+    document.getElementById('ov-len').textContent = detected ? `${bestOv} bp` : 'None';
+    document.getElementById('ov-trim').innerHTML = overhang > 0
+      ? `<span style="color:var(--bad)">${overhang} bp</span>`
+      : `<span style="color:var(--good)">0 bp</span>`;
+    document.getElementById('ov-id').textContent = `${(bestId * 100).toFixed(1)}%`;
+  }
+
+  slIns.addEventListener('input', renderOverlap);
+  chkErr.addEventListener('change', renderOverlap);
+
+  function renderAll() { renderTrim(); renderOverlap(); }
+  renderAll();
+})();
+</script>
+</body>
+</html>
+
