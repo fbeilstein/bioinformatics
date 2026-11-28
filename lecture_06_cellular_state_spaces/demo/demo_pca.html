@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Interactive 2D PCA Demo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --grid: #e2e8f0;
+      --accent: #2563eb;
+      --axis-line: #0089ff;
+      --point-fill: rgba(239, 68, 68, 0.72);
+      --point-line: #b91c1c;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface2: #0b1220;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #334155;
+        --grid: #334155;
+        --accent: #60a5fa;
+        --axis-line: #38bdf8;
+        --point-fill: rgba(248, 113, 113, 0.80);
+        --point-line: #fca5a5;
+      }
+    }
+
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --grid: #e2e8f0;
+      --accent: #2563eb;
+      --axis-line: #0089ff;
+      --point-fill: rgba(239, 68, 68, 0.72);
+      --point-line: #b91c1c;
+    }
+
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #0b1220;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #334155;
+      --grid: #334155;
+      --accent: #60a5fa;
+      --axis-line: #38bdf8;
+      --point-fill: rgba(248, 113, 113, 0.80);
+      --point-line: #fca5a5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+    }
+
+    #everything {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      width: 100%;
+      height: 100%;
+      padding: 14px 20px;
+    }
+
+    #plot-stage {
+      position: relative;
+      flex: 0 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px;
+    }
+
+    #for_right_plot {
+      width: 520px;
+      height: 520px;
+    }
+
+    #paint {
+      position: absolute;
+      z-index: 1000;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    #side-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 410px;
+      max-width: 44vw;
+    }
+
+    .panel-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .panel-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 0 0 10px 0;
+    }
+
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .radio-opt {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .radio-opt input[type="radio"] {
+      accent-color: var(--accent);
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    @supports not (accent-color: auto) {
+      .radio-opt input[type="radio"] {
+        position: absolute !important;
+        clip-path: inset(50%) !important;
+        overflow: hidden !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: -1px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        white-space: nowrap !important;
+      }
+
+      .radio-opt {
+        position: relative;
+        padding-left: 26px;
+      }
+
+      .radio-opt input[type="radio"] + span::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        background: var(--bg);
+        box-sizing: border-box;
+      }
+
+      .radio-opt input[type="radio"]:checked + span::before {
+        border-color: var(--accent);
+      }
+
+      .radio-opt input[type="radio"]:checked + span::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .radio-opt input[type="radio"]:focus-visible + span::before {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+    }
+
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button.clear-btn {
+      appearance: none;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.clear-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    button.clear-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .hint {
+      margin: 10px 0 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    #for_left_plot {
+      width: 100%;
+      height: 185px;
+    }
+  </style>
+
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script type="application/javascript">
+    var x_min = 0.0;
+    var y_min = 0.0;
+    var x_max = 1.0;
+    var y_max = 1.0;
+
+    var center = [0.5, 0.5];
+    var vector_x = [1.0, 0.0];
+    var points = [];
+    var moving_pca = 0;
+    var is_dragging = false;
+    var right_initialized = false;
+    var left_initialized = false;
+
+    var canvas_handles = {
+      handle_down: null,
+      handle_move: null,
+      handle_up: null
+    };
+
+    function getThemeColors() {
+      var cs = getComputedStyle(document.documentElement);
+      return {
+        bg: cs.getPropertyValue('--surface').trim() || '#ffffff',
+        plotBg: cs.getPropertyValue('--bg').trim() || '#ffffff',
+        text: cs.getPropertyValue('--text').trim() || '#0f172a',
+        muted: cs.getPropertyValue('--muted').trim() || '#475569',
+        border: cs.getPropertyValue('--border').trim() || '#cbd5e1',
+        grid: cs.getPropertyValue('--grid').trim() || '#e2e8f0',
+        axisLine: cs.getPropertyValue('--axis-line').trim() || '#0089ff',
+        pointFill: cs.getPropertyValue('--point-fill').trim() || 'rgba(239, 68, 68, 0.72)',
+        pointLine: cs.getPropertyValue('--point-line').trim() || '#b91c1c'
+      };
+    }
+
+    function loss_function_2d() {
+      if (typeof Plotly === 'undefined') {
+        return;
+      }
+
+      var theme = getThemeColors();
+      var red_x = [];
+      var red_y = [];
+      for (var i = 0; i < points.length; ++i) {
+        red_x.push(points[i][0]);
+        red_y.push(points[i][1]);
+      }
+
+      var data = [];
+
+      // datapoints
+      data.push({
+        x: red_x,
+        y: red_y,
+        showscale: false,
+        opacity: 1.0,
+        type: 'scatter',
+        mode: 'markers',
+        name: 'data points',
+        marker: {
+          size: 12,
+          color: theme.pointFill,
+          line: { width: 1.2, color: theme.pointLine }
+        }
+      });
+
+      // orthogonal PCA coordinate axes
+      data.push({
+        x: [
+          center[0] - vector_x[0] * 2, center[0] + vector_x[0] * 2, null,
+          center[0] + vector_x[1] * 2, center[0] - vector_x[1] * 2
+        ],
+        y: [
+          center[1] - vector_x[1] * 2, center[1] + vector_x[1] * 2, null,
+          center[1] - vector_x[0] * 2, center[1] + vector_x[0] * 2
+        ],
+        showscale: false,
+        opacity: 1.0,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'PCA axes',
+        line: { width: 2, color: theme.axisLine }
+      });
+
+      var right_plot = document.getElementById('for_right_plot');
+      var plot_size = Math.max(320, Math.min(520, Math.floor(window.innerHeight - 44)));
+      right_plot.style.width = plot_size + 'px';
+      right_plot.style.height = plot_size + 'px';
+
+      var right_layout = {
+        title: { text: 'PCA Coordinate Frame (2D)', font: { size: 14, color: theme.text } },
+        paper_bgcolor: theme.bg,
+        plot_bgcolor: theme.plotBg,
+        font: { color: theme.text, size: 11 },
+        xaxis: {
+          range: [x_min, x_max],
+          domain: [0.0, 1.0],
+          fixedrange: true,
+          gridcolor: theme.grid,
+          linecolor: theme.border,
+          mirror: true,
+          zeroline: false
+        },
+        yaxis: {
+          range: [y_min, y_max],
+          domain: [0.0, 1.0],
+          fixedrange: true,
+          gridcolor: theme.grid,
+          linecolor: theme.border,
+          mirror: true,
+          zeroline: false
+        },
+        width: plot_size,
+        height: plot_size,
+        autosize: false,
+        showlegend: false,
+        margin: { l: 38, r: 16, b: 34, t: 36 },
+        annotations: [
+          {
+            axref: 'x', ax: center[0], xref: 'x', x: center[0] + vector_x[0] * 0.12,
+            ayref: 'y', ay: center[1], yref: 'y', y: center[1] + vector_x[1] * 0.12,
+            showarrow: true,
+            arrowhead: 2,
+            arrowsize: 1.1,
+            arrowwidth: 2,
+            arrowcolor: theme.text
+          },
+          {
+            axref: 'x', ax: center[0], xref: 'x', x: center[0] - vector_x[1] * 0.12,
+            ayref: 'y', ay: center[1], yref: 'y', y: center[1] + vector_x[0] * 0.12,
+            showarrow: true,
+            arrowhead: 2,
+            arrowsize: 1.1,
+            arrowwidth: 2,
+            arrowcolor: theme.text
+          }
+        ]
+      };
+
+      var plot_config = { displayModeBar: false, responsive: false };
+      var p1 = right_initialized
+        ? Plotly.react(right_plot, data, right_layout, plot_config)
+        : Plotly.newPlot(right_plot, data, right_layout, plot_config);
+      right_initialized = true;
+      if (p1 && typeof p1.then === 'function') {
+        p1.then(adjust_canvas);
+      }
+
+      // ----------------------------------- //
+
+      var proj_data = [];
+      proj_data.push({
+        x: [-1.0, 1.0, null, -1.0, 1.0],
+        y: [-0.5, -0.5, null, 0.5, 0.5],
+        showscale: false,
+        opacity: 1.0,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'projection tracks',
+        line: { width: 2, color: theme.axisLine }
+      });
+
+      var proj_x = [];
+      var proj_y = [];
+      for (var j = 0; j < points.length; ++j) {
+        var v = [points[j][0] - center[0], points[j][1] - center[1]];
+        var lx = v[0] * vector_x[0] + v[1] * vector_x[1];
+        var ly = -v[0] * vector_x[1] + v[1] * vector_x[0];
+        proj_x.push(lx);
+        proj_y.push(-0.5);
+        proj_x.push(ly);
+        proj_y.push(0.5);
+      }
+
+      proj_data.push({
+        x: proj_x,
+        y: proj_y,
+        showscale: false,
+        opacity: 1.0,
+        type: 'scatter',
+        mode: 'markers',
+        name: 'projected coordinates',
+        marker: {
+          size: 8,
+          color: theme.pointFill,
+          line: { width: 1, color: theme.pointLine }
+        }
+      });
+
+      proj_data.push({
+        x: [0.0, 0.0, null, 0.0, 0.0],
+        y: [0.3, 0.7, null, -0.7, -0.3],
+        showscale: false,
+        opacity: 1.0,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'origin ticks',
+        line: { width: 2, color: theme.text }
+      });
+
+      var left_plot = document.getElementById('for_left_plot');
+      var proj_w = Math.max(260, left_plot.clientWidth || 376);
+      var left_layout = {
+        paper_bgcolor: theme.bg,
+        plot_bgcolor: theme.plotBg,
+        font: { color: theme.text, size: 11 },
+        xaxis: {
+          range: [-1.0, 1.0],
+          domain: [0.0, 1.0],
+          fixedrange: true,
+          showgrid: false,
+          zeroline: false,
+          linecolor: theme.border
+        },
+        yaxis: {
+          range: [-1.0, 1.0],
+          domain: [0.0, 1.0],
+          fixedrange: true,
+          showgrid: false,
+          zeroline: false,
+          showticklabels: false
+        },
+        width: proj_w,
+        height: 185,
+        autosize: false,
+        showlegend: false,
+        margin: { l: 10, r: 10, b: 28, t: 10 },
+        annotations: [
+          {
+            axref: 'x', ax: 0.0, xref: 'x', x: 0.14,
+            ayref: 'y', ay: -0.5, yref: 'y', y: -0.5,
+            showarrow: true,
+            arrowhead: 2,
+            arrowwidth: 2,
+            arrowcolor: theme.text
+          },
+          {
+            axref: 'x', ax: 0.0, xref: 'x', x: 0.14,
+            ayref: 'y', ay: 0.5, yref: 'y', y: 0.5,
+            showarrow: true,
+            arrowhead: 2,
+            arrowwidth: 2,
+            arrowcolor: theme.text
+          },
+          {
+            xref: 'x', x: -0.96, yref: 'y', y: -0.22,
+            text: 'Axis 1 (PC1)',
+            xanchor: 'left',
+            showarrow: false,
+            font: { size: 11, color: theme.muted }
+          },
+          {
+            xref: 'x', x: -0.96, yref: 'y', y: 0.78,
+            text: 'Axis 2 (PC2)',
+            xanchor: 'left',
+            showarrow: false,
+            font: { size: 11, color: theme.muted }
+          }
+        ]
+      };
+
+      if (left_initialized) {
+        Plotly.react(left_plot, proj_data, left_layout, plot_config);
+      } else {
+        Plotly.newPlot(left_plot, proj_data, left_layout, plot_config);
+        left_initialized = true;
+      }
+    }
+
+    function add_pts(cls) {
+      moving_pca = 0;
+      canvas_handles.handle_down = function(x, y) {
+        points.push([x, y, cls]);
+      };
+      canvas_handles.handle_move = null;
+      canvas_handles.handle_up = null;
+      updateCursor('crosshair');
+    }
+
+    function move_pts() {
+      moving_pca = 0;
+      canvas_handles.handle_down = function(x, y) {
+        for (var i = 0; i < points.length; ++i) {
+          if ((x - points[i][0]) * (x - points[i][0]) + (y - points[i][1]) * (y - points[i][1]) < 0.0012) {
+            (function(idx) {
+              canvas_handles.handle_move = function(mx, my) {
+                if (mx < x_min || mx > x_max || my < y_min || my > y_max) {
+                  return false;
+                }
+                points[idx][0] = mx;
+                points[idx][1] = my;
+                return true;
+              };
+            })(i);
+            break;
+          }
+        }
+      };
+      canvas_handles.handle_move = null;
+      canvas_handles.handle_up = function() {
+        canvas_handles.handle_move = null;
+      };
+      updateCursor('grab');
+    }
+
+    function del_pts() {
+      moving_pca = 0;
+      canvas_handles.handle_down = function(x, y) {
+        var idx = -1;
+        for (var i = 0; i < points.length; ++i) {
+          if ((x - points[i][0]) * (x - points[i][0]) + (y - points[i][1]) * (y - points[i][1]) < 0.0012) {
+            idx = i;
+          }
+        }
+        if (idx !== -1) {
+          points.splice(idx, 1);
+        }
+      };
+      canvas_handles.handle_move = null;
+      canvas_handles.handle_up = null;
+      updateCursor('pointer');
+    }
+
+    function pca_move() {
+      moving_pca = 0;
+      canvas_handles.handle_down = function(x, y) {
+        var v = [x - center[0], y - center[1]];
+        var a = v[0] * vector_x[0] + v[1] * vector_x[1];
+        var b = -v[1] * vector_x[0] + v[0] * vector_x[1];
+        if (a * a < 0.01) {
+          moving_pca = b > 0 ? 3 : -3;
+        }
+        if (b * b < 0.01) {
+          moving_pca = a > 0 ? 2 : -2;
+        }
+        if (v[0] * v[0] + v[1] * v[1] < 0.01) {
+          moving_pca = 1;
+        }
+      };
+      canvas_handles.handle_move = function(x, y) {
+        if (moving_pca === 0) {
+          return false;
+        }
+        if (moving_pca === 1) {
+          center[0] = Math.max(x_min, Math.min(x_max, x));
+          center[1] = Math.max(y_min, Math.min(y_max, y));
+          return true;
+        }
+        var v = [x - center[0], y - center[1]];
+        var l = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+        if (l < 1e-6) {
+          return false;
+        }
+        v = [v[0] / l, v[1] / l];
+        if (moving_pca === 2) {
+          vector_x = v;
+        } else if (moving_pca === -2) {
+          vector_x = [-v[0], -v[1]];
+        } else if (moving_pca === -3) {
+          vector_x = [v[1], -v[0]];
+        } else if (moving_pca === 3) {
+          vector_x = [-v[1], v[0]];
+        }
+        return true;
+      };
+      canvas_handles.handle_up = function() {
+        moving_pca = 0;
+      };
+      updateCursor('move');
+    }
+
+    function updateCursor(cursorStyle) {
+      var canvas = document.getElementById('paint');
+      if (canvas) {
+        canvas.style.cursor = cursorStyle;
+      }
+    }
+
+    function extract_coordinates(event) {
+      event.stopPropagation();
+      var canvas = document.getElementById('paint');
+      var rect = canvas.getBoundingClientRect();
+      var x = event.clientX - rect.left;
+      var y = event.clientY - rect.top;
+      var w = rect.width || canvas.width || 1;
+      var h = rect.height || canvas.height || 1;
+      var plot_x = (x / w) * (x_max - x_min) + x_min;
+      var plot_y = (1.0 - y / h) * (y_max - y_min) + y_min;
+      return [plot_x, plot_y];
+    }
+
+    function mdown_handle(event) {
+      is_dragging = true;
+      var pts = extract_coordinates(event);
+      if (canvas_handles.handle_down) {
+        canvas_handles.handle_down(pts[0], pts[1]);
+      }
+      loss_function_2d();
+    }
+
+    function mmove_handle(event) {
+      if (!is_dragging || !canvas_handles.handle_move) {
+        return;
+      }
+      var pts = extract_coordinates(event);
+      if (canvas_handles.handle_move(pts[0], pts[1])) {
+        loss_function_2d();
+      }
+    }
+
+    function mup_handle(event) {
+      if (!is_dragging) {
+        return;
+      }
+      is_dragging = false;
+      var pts = extract_coordinates(event);
+      if (canvas_handles.handle_up) {
+        canvas_handles.handle_up(pts[0], pts[1]);
+      }
+      loss_function_2d();
+    }
+
+    function adjust_canvas() {
+      var plt_div = document.getElementById('for_right_plot');
+      var stage = document.getElementById('plot-stage');
+      var canvas = document.getElementById('paint');
+      if (!plt_div || !stage || !canvas) {
+        return;
+      }
+      var el = plt_div.querySelector('.draglayer .xy .nsewdrag');
+      if (!el) {
+        var xy = plt_div.getElementsByClassName('xy')[0];
+        el = xy && xy.childNodes[0];
+      }
+      if (!el) {
+        return;
+      }
+      var rect = el.getBoundingClientRect();
+      var stageRect = stage.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+      canvas.style.top = (rect.top - stageRect.top) + 'px';
+      canvas.style.left = (rect.left - stageRect.left) + 'px';
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      canvas.width = Math.round(rect.width);
+      canvas.height = Math.round(rect.height);
+      var ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function clear_field() {
+      points = [];
+      loss_function_2d();
+    }
+
+    function applyTheme(t) {
+      var root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') {
+        root.classList.add('light-theme');
+      } else if (t === 'dark') {
+        root.classList.add('dark-theme');
+      }
+      loss_function_2d();
+    }
+
+    window.addEventListener('message', function(e) {
+      if (e.data && e.data.type === 'theme-change') {
+        applyTheme(e.data.theme);
+      }
+    });
+
+    var colorSchemeQuery = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (colorSchemeQuery && colorSchemeQuery.addEventListener) {
+      colorSchemeQuery.addEventListener('change', function() {
+        var root = document.documentElement;
+        if (!root.classList.contains('light-theme') && !root.classList.contains('dark-theme')) {
+          loss_function_2d();
+        }
+      });
+    }
+
+    window.addEventListener('resize', function() {
+      loss_function_2d();
+    });
+
+    window.addEventListener('mouseup', function() {
+      if (is_dragging) {
+        is_dragging = false;
+        moving_pca = 0;
+        if (canvas_handles.handle_up) {
+          canvas_handles.handle_up(0, 0);
+        }
+      }
+    });
+  </script>
+</head>
+<body>
+  <div id="everything">
+    <div id="plot-stage">
+      <div id="for_right_plot"></div>
+      <canvas id="paint" width="460" height="460"
+        onmousedown="mdown_handle(event)"
+        onmousemove="mmove_handle(event)"
+        onmouseup="mup_handle(event)">
+      </canvas>
+    </div>
+
+    <div id="side-column">
+      <div class="panel-card">
+        <div class="panel-title">Interaction Mode</div>
+        <div class="radio-group" role="radiogroup" aria-label="PCA Canvas Interaction Mode">
+          <label class="radio-opt" for="root_add_red">
+            <input type="radio" id="root_add_red" name="root_node" checked onchange="add_pts(0); loss_function_2d();">
+            <span>Add data point</span>
+          </label>
+          <label class="radio-opt" for="root_move">
+            <input type="radio" id="root_move" name="root_node" onchange="move_pts(); loss_function_2d();">
+            <span>Move data point</span>
+          </label>
+          <label class="radio-opt" for="root_del">
+            <input type="radio" id="root_del" name="root_node" onchange="del_pts(); loss_function_2d();">
+            <span>Delete data point</span>
+          </label>
+          <label class="radio-opt" for="root_pca">
+            <input type="radio" id="root_pca" name="root_node" onchange="pca_move(); loss_function_2d();">
+            <span>Move PCA coords</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="clear-btn" onclick="clear_field();">Clear</button>
+        </div>
+        <p class="hint">In <strong>Move PCA coords</strong> mode, drag near the center to translate the origin or drag along either blue axis to rotate the orthogonal frame.</p>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel-title">Projected Coordinates (1D)</div>
+        <div id="for_left_plot"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function init() {
+      add_pts(0);
+      loss_function_2d();
+      adjust_canvas();
+      setInterval(adjust_canvas, 1000);
+      try {
+        window.parent.postMessage({ type: 'get-theme' }, '*');
+      } catch (_) {}
+    }
+    init();
+  </script>
+</body>
+</html>
+

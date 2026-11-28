@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAGA, Diffusion Pseudotime &amp; Waddington KDE Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 7px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="PAGA, Diffusion Pseudotime and Waddington KDE labs">
+    <button type="button" role="tab" id="tab-dpt" aria-selected="true">1. Random-Walk Diffusion, DPT &amp; PAGA Connectivity</button>
+    <button type="button" role="tab" id="tab-wad" aria-selected="false">2. Waddington KDE Pseudo-Potential U = −log(p̂ + ε)</button>
+  </div>
+
+  <!-- TAB 1: Diffusion Pseudotime & PAGA -->
+  <div role="tabpanel" id="panel-dpt" aria-labelledby="tab-dpt">
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Root Cell Index (along Monocyte Arc)</span><span class="ctrl-val" id="v-root">0 (CD14++)</span></span>
+        <input type="range" id="s-root" min="0" max="23" step="1" value="0"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Random-Walk Steps t (T^t mass)</span><span class="ctrl-val" id="v-tstep">8 steps</span></span>
+        <input type="range" id="s-tstep" min="1" max="40" step="1" value="8"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>View Mode (1=DPT, 0=T^t wave)</span><span class="ctrl-val" id="v-mode">Multi-Scale DPT</span></span>
+        <input type="range" id="s-mode" min="0" max="1" step="1" value="1"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Monocyte Arc + Disconnected B-Cells</span>
+          <span class="badge ok" id="dpt-b-badge">B-cell mass: 0.000</span>
+        </div>
+        <canvas id="dpt-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Marker Dynamics Along Diffusion Pseudotime</span>
+          <span class="badge">CD14 ↓ · FCGR3A ↑</span>
+        </div>
+        <canvas id="gene-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">PAGA e(CD14 ↔ FCGR3A)</div><div class="kpi-val" id="k-paga-m" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">PAGA e(CD14 ↔ B-cell)</div><div class="kpi-val" id="k-paga-b" style="color:var(--muted);">0.00 (none)</div></div>
+      <div class="kpi"><div class="kpi-lbl">Top Non-Trivial λ₁</div><div class="kpi-val" id="k-lam1">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Disconnected B-Cell DPT</div><div class="kpi-val" style="color:var(--warn);">∞ → NaN</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Waddington KDE Pseudo-Potential -->
+  <div role="tabpanel" id="panel-wad" aria-labelledby="tab-wad" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>KDE Bandwidth h</span><span class="ctrl-val" id="v-bw">0.48</span></span>
+        <input type="range" id="s-bw" min="0.18" max="1.10" step="0.02" value="0.48"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Transition Bridge Cells</span><span class="ctrl-val" id="v-br">22 cells</span></span>
+        <input type="range" id="s-br" min="0" max="45" step="3" value="22"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Log Floor ε (×10⁻⁴)</span><span class="ctrl-val" id="v-eps">10</span></span>
+        <input type="range" id="s-eps" min="1" max="50" step="1" value="10"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>2D Pseudo-Potential Heatmap U(x, y) = −log(p̂ + ε)</span>
+          <span class="badge ok">Dark = Deep Valley</span>
+        </div>
+        <canvas id="wad-map"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>1D Valley–Saddle–Valley Cross-Section (y = 0)</span>
+          <span class="badge warn" id="barrier-badge">Barrier ΔU = —</span>
+        </div>
+        <canvas id="wad-slice"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">CD14 Valley Depth U_min</div><div class="kpi-val" id="k-u1">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Saddle Potential U_saddle</div><div class="kpi-val" id="k-usad">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Epigenetic Barrier ΔU</div><div class="kpi-val" id="k-du" style="color:var(--warn);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Bandwidth Regime</div><div class="kpi-val" id="k-bwreg">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderDPT();
+      renderWaddington();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderDPT(); else renderWaddington(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Pure Diffusion Map, Multi-Scale DPT, PAGA & 2D KDE Math ----
+    function jacobiSym(M) {
+      const n = M.length;
+      const A = M.map(r => [...r]);
+      const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => i === j ? 1 : 0));
+      for (let sw = 0; sw < 25; sw++) {
+        let maxOff = 0;
+        for (let pi = 0; pi < n; pi++) {
+          for (let qi = pi + 1; qi < n; qi++) {
+            const apq = A[pi][qi];
+            if (Math.abs(apq) > maxOff) maxOff = Math.abs(apq);
+            if (Math.abs(apq) < 1e-14) continue;
+            const app = A[pi][pi], aqq = A[qi][qi];
+            const tau = (aqq - app) / (2 * apq);
+            const t = tau >= 0 ? 1 / (tau + Math.sqrt(1 + tau * tau)) : -1 / (-tau + Math.sqrt(1 + tau * tau));
+            const c = 1 / Math.sqrt(1 + t * t), s = t * c;
+            for (let k = 0; k < n; k++) {
+              if (k !== pi && k !== qi) {
+                const akp = A[k][pi], akq = A[k][qi];
+                A[k][pi] = A[pi][k] = c * akp - s * akq;
+                A[k][qi] = A[qi][k] = s * akp + c * akq;
+              }
+            }
+            A[pi][pi] = c * c * app - 2 * s * c * apq + s * s * aqq;
+            A[qi][qi] = s * s * app + 2 * s * c * apq + c * c * aqq;
+            A[pi][qi] = A[qi][pi] = 0;
+            for (let k = 0; k < n; k++) {
+              const vkp = V[k][pi], vkq = V[k][qi];
+              V[k][pi] = c * vkp - s * vkq;
+              V[k][qi] = s * vkp + c * vkq;
+            }
+          }
+        }
+        if (maxOff < 1e-13) break;
+      }
+      const pairs = Array.from({ length: n }, (_, i) => ({ val: A[i][i], vec: V.map(row => row[i]) }));
+      pairs.sort((a, b) => b.val - a.val);
+      return { evals: pairs.map(o => o.val), evecs: pairs.map(o => o.vec) };
+    }
+
+    function computeDiffusionDPT(A, rootIdx) {
+      const n = A.length;
+      const deg = A.map(r => r.reduce((a, b) => a + b, 0));
+      const invSqrt = deg.map(d => d > 1e-12 ? 1 / Math.sqrt(d) : 0);
+      const Tsym = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (__, j) => A[i][j] * invSqrt[i] * invSqrt[j])
+      );
+      const { evals, evecs } = jacobiSym(Tsym);
+      // Multi-scale Neumann coordinates: M_ik = (lam_k / (1 - lam_k)) * psi_k[i], skipping trivial lam_0 = 1
+      const coords = Array.from({ length: n }, () => []);
+      for (let k = 1; k < n; k++) {
+        const lam = evals[k];
+        if (lam > 1 - 1e-7) continue;
+        const w = lam / (1 - lam);
+        for (let i = 0; i < n; i++) coords[i].push(w * evecs[k][i]);
+      }
+      const dptRaw = coords.map(v => {
+        let s = 0;
+        for (let m = 0; m < v.length; m++) { const d = v[m] - coords[rootIdx][m]; s += d * d; }
+        return Math.sqrt(s);
+      });
+      const maxD = Math.max(...dptRaw) || 1;
+      return { evals, dptRaw, dptNorm: dptRaw.map(v => v / maxD) };
+    }
+
+    function randomWalkPower(A, rootIdx, steps) {
+      const n = A.length;
+      const deg = A.map(r => r.reduce((a, b) => a + b, 0));
+      let prob = new Array(n).fill(0);
+      prob[rootIdx] = 1.0;
+      for (let st = 0; st < steps; st++) {
+        const next = new Array(n).fill(0);
+        for (let i = 0; i < n; i++) {
+          if (prob[i] === 0 || deg[i] === 0) continue;
+          for (let j = 0; j < n; j++) if (A[i][j] > 0) next[j] += prob[i] * (A[i][j] / deg[i]);
+        }
+        prob = next;
+      }
+      return prob;
+    }
+
+    function computePagaRatio(eObs, nI, nJ, nTotal, totalEdges) {
+      // Expected edges between groups I and J under random graph null model
+      const eRand = totalEdges * (2 * nI * nJ) / (nTotal * (nTotal - 1));
+      return eRand > 0 ? eObs / eRand : 0;
+    }
+
+    function evalKDE2D(pts, x, y, h) {
+      const inv = 1 / (2 * h * h);
+      const norm = 1 / (2 * Math.PI * h * h * pts.length);
+      let s = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const dx = x - pts[i][0], dy = y - pts[i][1];
+        s += Math.exp(-(dx * dx + dy * dy) * inv);
+      }
+      return s * norm;
+    }
+
+    // Build 24-node monocyte trajectory arc + 10 detached B-cells
+    const MONO_ARC = (() => {
+      const pts = [], cd14 = [], fcgr3a = [];
+      for (let i = 0; i < 24; i++) {
+        const frac = i / 23;
+        const th = 0.15 * Math.PI + 1.05 * Math.PI * frac;
+        pts.push([2.1 * Math.cos(th), 2.1 * Math.sin(th)]);
+        cd14.push(3.6 * (1 - 1 / (1 + Math.exp(-7 * (frac - 0.55)))));
+        fcgr3a.push(3.4 * (1 / (1 + Math.exp(-8 * (frac - 0.58)))));
+      }
+      const n = pts.length;
+      const A = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+          if (d < 0.92) A[i][j] = A[j][i] = Math.exp(-(d * d) / (2 * 0.45 * 0.45));
+        }
+      }
+      const bPts = Array.from({ length: 10 }, (_, i) => {
+        const ang = (2 * Math.PI * i) / 10;
+        return [0.25 + 0.45 * Math.cos(ang), -1.35 + 0.38 * Math.sin(ang)];
+      });
+      return { pts, A, cd14, fcgr3a, bPts };
+    })();
+
+    // Deterministic Waddington basins (CD14 left at -1.8, FCGR3A right at +1.8, B-cell top at (0, 2.0))
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const WAD_BASE = (() => {
+      const r = mulberry32(6801);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      const base = [];
+      for (let i = 0; i < 65; i++) base.push([-1.8 + 0.42 * rn(), 0.0 + 0.42 * rn()]);
+      for (let i = 0; i < 55; i++) base.push([ 1.8 + 0.42 * rn(), 0.0 + 0.42 * rn()]);
+      for (let i = 0; i < 50; i++) base.push([ 0.0 + 0.40 * rn(), 2.1 + 0.38 * rn()]);
+      const bridge = Array.from({ length: 45 }, (_, i) => [-1.3 + 2.6 * (i / 44), 0.25 * rn()]);
+      return { base, bridge };
+    })();
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function viridisHex(t) {
+      const stops = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+      const x = Math.max(0, Math.min(1, t)) * (stops.length - 1);
+      const i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
+      const rgb = [0,1,2].map(k => Math.round(stops[i][k] * (1 - f) + stops[i + 1][k] * f));
+      return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    }
+
+    function renderDPT() {
+      const root = +$('s-root').value;
+      const tStep = +$('s-tstep').value;
+      const showDPT = +$('s-mode').value === 1;
+      $('v-root').textContent = `${root} (${root < 12 ? 'CD14++' : 'FCGR3A+'})`;
+      $('v-tstep').textContent = `${tStep} steps`;
+      $('v-mode').textContent = showDPT ? 'Multi-Scale DPT' : `T^${tStep} Wave`;
+
+      const res = computeDiffusionDPT(MONO_ARC.A, root);
+      const wave = randomWalkPower(MONO_ARC.A, root, tStep);
+      const maxW = Math.max(...wave) || 1;
+
+      // PAGA ratio between CD14 (0..11) and FCGR3A (12..23) inside full 34-node graph
+      let eCross = 0, eTot = 0;
+      for (let i = 0; i < 24; i++) for (let j = i + 1; j < 24; j++) {
+        if (MONO_ARC.A[i][j] > 0) { eTot++; if ((i < 12 && j >= 12)) eCross++; }
+      }
+      eTot += 25; // internal B-cell edges
+      const pagaMono = computePagaRatio(eCross, 12, 12, 34, eTot);
+
+      $('k-paga-m').textContent = `${pagaMono.toFixed(2)}× (connected)`;
+      $('k-lam1').textContent = res.evals[1].toFixed(3);
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+
+      // 1. Arc + B-cell canvas
+      const c1 = prepCanvas($('dpt-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const sc = Math.min(W, H) / 6.0, cx = W / 2, cy = H * 0.54;
+        const xOf = (x) => cx + x * sc, yOf = (y) => cy - y * sc;
+
+        for (let i = 0; i < 24; i++) for (let j = i + 1; j < 24; j++) {
+          if (MONO_ARC.A[i][j] > 0) {
+            ctx.strokeStyle = cBorder; ctx.lineWidth = 1.1;
+            ctx.beginPath(); ctx.moveTo(xOf(MONO_ARC.pts[i][0]), yOf(MONO_ARC.pts[i][1]));
+            ctx.lineTo(xOf(MONO_ARC.pts[j][0]), yOf(MONO_ARC.pts[j][1])); ctx.stroke();
+          }
+        }
+        MONO_ARC.pts.forEach((pt, i) => {
+          const v = showDPT ? res.dptNorm[i] : (wave[i] / maxW);
+          ctx.fillStyle = viridisHex(v);
+          ctx.beginPath(); ctx.arc(xOf(pt[0]), yOf(pt[1]), i === root ? 7.2 : 5.0, 0, Math.PI * 2); ctx.fill();
+          if (i === root) { ctx.strokeStyle = cBad; ctx.lineWidth = 2.2; ctx.stroke(); }
+        });
+        MONO_ARC.bPts.forEach(pt => {
+          ctx.fillStyle = cMuted + '66'; ctx.strokeStyle = cMuted; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(xOf(pt[0]), yOf(pt[1]), 4.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        });
+        ctx.fillStyle = cMuted; ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillText('B-cells (0 walk mass)', cx - 38, H - 8);
+      }
+
+      // 2. Marker curves along pseudotime
+      const c2 = prepCanvas($('gene-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 36, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const order = res.dptNorm.map((d, i) => ({ d, i })).sort((a, b) => a.d - b.d);
+        const xOf = (d) => pL + d * pw;
+        const yOf = (v) => pT + ph - (v / 4.0) * ph;
+
+        const drawG = (arr, col) => {
+          ctx.strokeStyle = col; ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          order.forEach((o, k) => { const px = xOf(o.d), py = yOf(arr[o.i]); if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+          ctx.stroke();
+        };
+        drawG(MONO_ARC.cd14, cAcc);
+        drawG(MONO_ARC.fcgr3a, cBad);
+
+        ctx.font = 'bold 10.5px system-ui, sans-serif';
+        ctx.fillStyle = cAcc; ctx.fillText('— CD14 (classical)', pL + 8, pT + 11);
+        ctx.fillStyle = cBad; ctx.fillText('— FCGR3A / CD16 (non-classical)', pL + 122, pT + 11);
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Diffusion Pseudotime (0 → 1)', pL + pw / 2 - 64, H - 7);
+      }
+    }
+
+    function renderWaddington() {
+      const h = +$('s-bw').value;
+      const nBr = +$('s-br').value;
+      const eps = +$('s-eps').value * 1e-4;
+      $('v-bw').textContent = h.toFixed(2);
+      $('v-br').textContent = `${nBr} cells`;
+      $('v-eps').textContent = $('s-eps').value;
+
+      const pts = [...WAD_BASE.base, ...WAD_BASE.bridge.slice(0, nBr)];
+
+      // 1D slice along y = 0 for x in [-3.4, 3.4]
+      const xs = [], us = [];
+      for (let i = 0; i <= 100; i++) {
+        const x = -3.4 + 6.8 * (i / 100);
+        xs.push(x);
+        us.push(-Math.log(evalKDE2D(pts, x, 0, h) + eps));
+      }
+      const uValLeft = Math.min(...us.slice(12, 42));
+      const uSaddle = Math.max(...us.slice(42, 58));
+      const dU = Math.max(0, uSaddle - uValLeft);
+
+      $('k-u1').textContent = uValLeft.toFixed(2);
+      $('k-usad').textContent = uSaddle.toFixed(2);
+      $('k-du').textContent = `+${dU.toFixed(2)}`;
+      $('barrier-badge').textContent = `Barrier ΔU = +${dU.toFixed(2)}`;
+      $('k-bwreg').textContent = h < 0.30 ? 'Under-smoothed (spiky)' : (h > 0.80 ? 'Over-smoothed (merged)' : 'Balanced basins ✓');
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      // 1. 2D KDE Heatmap
+      const c1 = prepCanvas($('wad-map'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const nx = 44, ny = 34;
+        const grid = [];
+        let uMin = Infinity, uMax = -Infinity;
+        for (let iy = 0; iy < ny; iy++) {
+          const y = 3.2 - 4.8 * (iy / (ny - 1));
+          for (let ix = 0; ix < nx; ix++) {
+            const x = -3.5 + 7.0 * (ix / (nx - 1));
+            const u = -Math.log(evalKDE2D(pts, x, y, h) + eps);
+            grid.push(u);
+            if (u < uMin) uMin = u;
+            if (u > uMax) uMax = u;
+          }
+        }
+        const cw = W / nx, ch = H / ny;
+        for (let iy = 0; iy < ny; iy++) {
+          for (let ix = 0; ix < nx; ix++) {
+            const norm = (grid[iy * nx + ix] - uMin) / Math.max(1e-6, uMax - uMin);
+            ctx.fillStyle = viridisHex(norm);
+            ctx.fillRect(ix * cw, iy * ch, Math.ceil(cw), Math.ceil(ch));
+          }
+        }
+        // Horizontal slice guide at y = 0
+        const y0Px = ((3.2 - 0) / 4.8) * H;
+        ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(0, y0Px); ctx.lineTo(W, y0Px); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10.5px system-ui, sans-serif';
+        ctx.fillText('CD14', W * 0.21, y0Px - 8);
+        ctx.fillText('FCGR3A', W * 0.72, y0Px - 8);
+        ctx.fillText('B-cells', W * 0.46, H * 0.23);
+      }
+
+      // 2. 1D Cross-section plot
+      const c2 = prepCanvas($('wad-slice'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 38, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const uMin = Math.min(...us) - 0.3, uMax = Math.max(...us) + 0.4;
+        const xOf = (x) => pL + ((x + 3.4) / 6.8) * pw;
+        const yOf = (u) => pT + ph - ((u - uMin) / Math.max(1e-6, uMax - uMin)) * ph;
+
+        ctx.fillStyle = cAcc + '24';
+        ctx.beginPath(); ctx.moveTo(xOf(xs[0]), pT + ph);
+        xs.forEach((x, i) => ctx.lineTo(xOf(x), yOf(us[i])));
+        ctx.lineTo(xOf(xs[xs.length - 1]), pT + ph); ctx.closePath(); ctx.fill();
+
+        ctx.strokeStyle = cAcc; ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        xs.forEach((x, i) => { const px = xOf(x), py = yOf(us[i]); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+        ctx.stroke();
+
+        // Saddle & valley markers
+        ctx.save(); ctx.strokeStyle = cWarn; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(pL, yOf(uSaddle)); ctx.lineTo(pL + pw, yOf(uSaddle)); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = cWarn; ctx.font = 'bold 10px ui-monospace, monospace';
+        ctx.fillText(`Saddle U=${uSaddle.toFixed(1)}`, pL + 6, yOf(uSaddle) - 5);
+
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('CD14 basin', xOf(-2.4), H - 7);
+        ctx.fillText('Saddle', xOf(-0.3), H - 7);
+        ctx.fillText('FCGR3A basin', xOf(1.1), H - 7);
+      }
+    }
+
+    ['s-root', 's-tstep', 's-mode'].forEach(id => $(id).addEventListener('input', renderDPT));
+    ['s-bw', 's-br', 's-eps'].forEach(id => $(id).addEventListener('input', renderWaddington));
+    new ResizeObserver(() => { renderDPT(); renderWaddington(); }).observe($('dpt-canvas'));
+    renderDPT();
+    renderWaddington();
+  </script>
+</body>
+</html>

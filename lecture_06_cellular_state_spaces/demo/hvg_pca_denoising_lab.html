@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HVG Selection, Z-Score Leverage &amp; Spectral PCA Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; align-items: center; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    input[type="range"] { width: 100%; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px;
+      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 7px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .table-wrapper { overflow: auto; max-height: 220px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 4px 7px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { position: sticky; top: 0; background: var(--surface2); font-weight: 700; color: var(--muted); }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="HVG selection and spectral PCA labs">
+    <button type="button" role="tab" id="tab-hvg" aria-selected="true">1. Mean-Binned HVGs &amp; Z-Score Clipping</button>
+    <button type="button" role="tab" id="tab-pca" aria-selected="false">2. Spectral PCA / SVD Denoising &amp; Sign-Flip Invariance</button>
+  </div>
+
+  <!-- TAB 1: HVG & Z-Score Clipping -->
+  <div role="tabpanel" id="panel-hvg" aria-labelledby="tab-hvg">
+    <div class="ctrl-row">
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="btn active" id="btn-mode-hvg">Mean-Binned HVG (z_d)</button>
+        <button type="button" class="btn" id="btn-mode-raw">Raw Variance Only</button>
+      </div>
+      <label class="ctrl"><span class="ctrl-top"><span>min_disp Threshold z_d</span><span class="ctrl-val" id="v-mdisp">0.50</span></span>
+        <input type="range" id="s-mdisp" min="0.0" max="2.0" step="0.1" value="0.5"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Z-Score Clip max_value</span><span class="ctrl-val" id="v-clip">10 σ</span></span>
+        <input type="range" id="s-clip" min="4" max="40" step="2" value="10"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>200 Genes: Mean vs. Normalized Dispersion z_d</span>
+          <span class="badge ok" id="hvg-prec-badge">Marker Precision: —</span>
+        </div>
+        <canvas id="hvg-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Single-Cell +40σ Spike Leverage in PCA</span>
+          <span class="badge" id="clip-badge">Clipped at ±10σ</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="Single-cell outlier variance leverage table">
+          <table>
+            <thead>
+              <tr>
+                <th>Gene Type</th>
+                <th class="num">Mean</th>
+                <th class="num">Raw Var</th>
+                <th class="num">z_d</th>
+                <th>Selected?</th>
+              </tr>
+            </thead>
+            <tbody id="hvg-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Selected Genes</div><div class="kpi-val" id="k-nsel">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">True Lineage Markers Kept</div><div class="kpi-val" id="k-mk" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">1-Cell Spike Variance Share</div><div class="kpi-val" id="k-spike" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Effective Spike Leverage</div><div class="kpi-val" id="k-lev">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Spectral PCA / SVD Denoising -->
+  <div role="tabpanel" id="panel-pca" aria-labelledby="tab-pca" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Independent Noise Level σ</span><span class="ctrl-val" id="v-noise">1.00</span></span>
+        <input type="range" id="s-noise" min="0.2" max="2.4" step="0.1" value="1.0"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Retain Top k PCs</span><span class="ctrl-val" id="v-kpcs">2 PCs</span></span>
+        <input type="range" id="s-kpcs" min="1" max="8" step="1" value="2"></label>
+      <div style="display:flex; gap:6px; justify-content:flex-end;">
+        <button type="button" class="btn primary" id="btn-flip">Flip PC1 Sign (−v₁)</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>SVD Spectrum (Eigenvalues λ_i = S_i² / (n − 1))</span>
+          <span class="badge ok" id="pca-var-badge">Top-2 Var: —</span>
+        </div>
+        <canvas id="scree-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Cell Scores Z = U·S (PC1 vs. PC2)</span>
+          <span class="badge" id="flip-badge">Sign = +1 (|r| = 1.000)</span>
+        </div>
+        <canvas id="scores-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">PC1 Explained Var Ratio</div><div class="kpi-val" id="k-vr1">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">PC2 Explained Var Ratio</div><div class="kpi-val" id="k-vr2">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Cumulative Top-k Ratio</div><div class="kpi-val" id="k-vrc" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Pairwise Dist Error (Flip)</div><div class="kpi-val" style="color:var(--ok);">0.00e+00</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderHVG();
+      renderPCA();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderHVG(); else renderPCA(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // ---- Pure HVG & Z-Score Functions ----
+    function binNormalizedDisp(means, disps, nBins = 5) {
+      const n = means.length;
+      const order = means.map((m, i) => ({ m, i })).sort((a, b) => a.m - b.m);
+      const zd = new Array(n).fill(0);
+      for (let b = 0; b < nBins; b++) {
+        const start = Math.floor((b * n) / nBins);
+        const end = Math.floor(((b + 1) * n) / nBins);
+        const slice = order.slice(start, end);
+        const vals = slice.map(o => disps[o.i]);
+        const mu = vals.reduce((a, c) => a + c, 0) / vals.length;
+        const sd = Math.sqrt(vals.reduce((a, v) => a + (v - mu) * (v - mu), 0) / Math.max(1, vals.length - 1)) || 1;
+        slice.forEach(o => { zd[o.i] = (disps[o.i] - mu) / sd; });
+      }
+      return zd;
+    }
+
+    function spikeVarianceShare(nCells, spikeSigma, clipMax) {
+      // 1 outlier cell clipped at min(spikeSigma, clipMax), rest ~ unit variance
+      const eff = Math.min(spikeSigma, clipMax);
+      const ssSpike = eff * eff;
+      const ssBulk = nCells - 1;
+      return { eff, share: ssSpike / (ssSpike + ssBulk) };
+    }
+
+    // ---- Exact Jacobi Eigendecomposition for symmetric p x p covariance matrix ----
+    function jacobiEigen(C) {
+      const p = C.length;
+      const A = C.map(r => [...r]);
+      const V = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (__, j) => i === j ? 1 : 0));
+      for (let sweep = 0; sweep < 25; sweep++) {
+        let maxOff = 0;
+        for (let pi = 0; pi < p; pi++) {
+          for (let qi = pi + 1; qi < p; qi++) {
+            const apq = A[pi][qi];
+            if (Math.abs(apq) > maxOff) maxOff = Math.abs(apq);
+            if (Math.abs(apq) < 1e-14) continue;
+            const app = A[pi][pi], aqq = A[qi][qi];
+            const tau = (aqq - app) / (2 * apq);
+            const t = tau >= 0 ? 1 / (tau + Math.sqrt(1 + tau * tau)) : -1 / (-tau + Math.sqrt(1 + tau * tau));
+            const c = 1 / Math.sqrt(1 + t * t), s = t * c;
+            for (let k = 0; k < p; k++) {
+              if (k !== pi && k !== qi) {
+                const akp = A[k][pi], akq = A[k][qi];
+                A[k][pi] = A[pi][k] = c * akp - s * akq;
+                A[k][qi] = A[qi][k] = s * akp + c * akq;
+              }
+            }
+            A[pi][pi] = c * c * app - 2 * s * c * apq + s * s * aqq;
+            A[qi][qi] = s * s * app + 2 * s * c * apq + c * c * aqq;
+            A[pi][qi] = A[qi][pi] = 0;
+            for (let k = 0; k < p; k++) {
+              const vkp = V[k][pi], vkq = V[k][qi];
+              V[k][pi] = c * vkp - s * vkq;
+              V[k][qi] = s * vkp + c * vkq;
+            }
+          }
+        }
+        if (maxOff < 1e-13) break;
+      }
+      const pairs = Array.from({ length: p }, (_, i) => ({ val: Math.max(0, A[i][i]), vec: V.map(row => row[i]) }));
+      pairs.sort((a, b) => b.val - a.val);
+      return { eigenvalues: pairs.map(o => o.val), eigenvectors: pairs.map(o => o.vec) };
+    }
+
+    function computePCA(X) {
+      const n = X.length, p = X[0].length;
+      const means = Array.from({ length: p }, (_, j) => X.reduce((s, r) => s + r[j], 0) / n);
+      const Xc = X.map(r => r.map((v, j) => v - means[j]));
+      const C = Array.from({ length: p }, () => new Array(p).fill(0));
+      for (let i = 0; i < p; i++) {
+        for (let j = i; j < p; j++) {
+          let sum = 0;
+          for (let r = 0; r < n; r++) sum += Xc[r][i] * Xc[r][j];
+          C[i][j] = C[j][i] = sum / (n - 1);
+        }
+      }
+      const { eigenvalues, eigenvectors } = jacobiEigen(C);
+      const totVar = eigenvalues.reduce((a, b) => a + b, 0) || 1;
+      const varRatio = eigenvalues.map(v => v / totVar);
+      // Scores Z = Xc * V
+      const scores = Xc.map(row => eigenvectors.map(vec => row.reduce((s, v, j) => s + v * vec[j], 0)));
+      return { eigenvalues, varRatio, scores, eigenvectors };
+    }
+
+    // Synthetic 200-gene pool for Tab 1
+    const GENE_POOL = (() => {
+      const r = mulberry32(6601);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      const arr = [];
+      const mkNames = ['CD3D', 'IL7R', 'MS4A1', 'CD79A', 'LYZ', 'CD14', 'FCGR3A', 'NKG7', 'GNLY', 'FCER1A', 'PPBP', 'CST3'];
+      const hkNames = ['RPL13', 'RPS18', 'ACTB', 'GAPDH', 'B2M', 'TMSB4X', 'EEF1A1', 'FTH1'];
+      for (let i = 0; i < 160; i++) {
+        const mu = 0.1 + r() * 3.1;
+        const disp = 1.0 + 0.35 * mu + 0.22 * rn();
+        const rawVar = Math.pow(Math.expm1(mu), 1.35) * Math.max(0.2, disp);
+        arr.push({ name: i < hkNames.length ? hkNames[i] : `HK_${i}`, isMarker: false, mu, disp, rawVar });
+      }
+      for (let i = 0; i < 40; i++) {
+        const mu = 0.3 + r() * 2.3;
+        const disp = 1.9 + 0.45 * mu + Math.abs(rn()) * 0.9;
+        const rawVar = Math.pow(Math.expm1(mu), 1.35) * disp;
+        arr.push({ name: i < mkNames.length ? mkNames[i] : `MK_${i}`, isMarker: true, mu, disp, rawVar });
+      }
+      const zd = binNormalizedDisp(arr.map(g => g.mu), arr.map(g => g.disp), 6);
+      arr.forEach((g, i) => { g.zd = zd[i]; });
+      return arr;
+    })();
+
+    // Synthetic 90-cell × 8-gene dataset for Tab 2 live exact SVD/PCA
+    const PCA_BASE = (() => {
+      const r = mulberry32(6602);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      const clusters = [[2.2, 1.4], [-2.1, 1.2], [0.1, -2.3]];
+      const labels = [], clean = [], noiseMat = [];
+      // Loading matrix (2 latent dims -> 8 correlated genes)
+      const W = [
+        [0.9, 0.85, 0.8, -0.75, 0.2, -0.1, 0.05, 0.0],
+        [0.15, -0.2, 0.1, 0.3, 0.9, 0.85, -0.8, 0.75]
+      ];
+      for (let c = 0; c < 3; c++) {
+        for (let i = 0; i < 30; i++) {
+          labels.push(c);
+          const z1 = clusters[c][0] + 0.45 * rn();
+          const z2 = clusters[c][1] + 0.45 * rn();
+          clean.push(Array.from({ length: 8 }, (_, j) => z1 * W[0][j] + z2 * W[1][j]));
+          noiseMat.push(Array.from({ length: 8 }, () => rn()));
+        }
+      }
+      return { labels, clean, noiseMat };
+    })();
+
+    let hvgMode = 'hvg';
+    let pc1Sign = 1;
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function renderHVG() {
+      const minDisp = +$('s-mdisp').value;
+      const clipMax = +$('s-clip').value;
+      $('v-mdisp').textContent = minDisp.toFixed(2);
+      $('v-clip').textContent = clipMax >= 40 ? 'Unclipped (40σ)' : `${clipMax} σ`;
+      $('clip-badge').textContent = clipMax >= 40 ? 'Unclipped (+40σ burst!)' : `Clipped at ±${clipMax}σ`;
+      $('clip-badge').className = clipMax >= 24 ? 'badge bad' : 'badge ok';
+
+      let selFlags;
+      if (hvgMode === 'hvg') {
+        selFlags = GENE_POOL.map(g => g.zd >= minDisp && g.mu <= 3.0);
+      } else {
+        const kWant = Math.max(10, GENE_POOL.filter(g => g.zd >= minDisp && g.mu <= 3.0).length);
+        const topSet = new Set(GENE_POOL.map((g, i) => ({ rv: g.rawVar, i })).sort((a, b) => b.rv - a.rv).slice(0, kWant).map(o => o.i));
+        selFlags = GENE_POOL.map((_, i) => topSet.has(i));
+      }
+
+      const nSel = selFlags.filter(Boolean).length;
+      const nMk = GENE_POOL.filter((g, i) => selFlags[i] && g.isMarker).length;
+      const prec = nSel > 0 ? (nMk / nSel) * 100 : 0;
+      const sp = spikeVarianceShare(2608, 40, clipMax);
+
+      $('k-nsel').textContent = `${nSel} / ${GENE_POOL.length}`;
+      $('k-mk').textContent = `${nMk} / 40 (${prec.toFixed(0)}% prec.)`;
+      $('k-spike').textContent = `${(sp.share * 100).toFixed(1)}%`;
+      $('k-lev').textContent = `${sp.eff}σ (z² = ${sp.eff * sp.eff})`;
+      $('hvg-prec-badge').textContent = `Marker Precision: ${prec.toFixed(0)}%`;
+      $('hvg-prec-badge').className = prec >= 60 ? 'badge ok' : 'badge bad';
+
+      // Top 10 genes table by active ranking criterion
+      const ranked = GENE_POOL.map((g, i) => ({ ...g, sel: selFlags[i] }))
+        .sort((a, b) => hvgMode === 'hvg' ? b.zd - a.zd : b.rawVar - a.rawVar)
+        .slice(0, 10);
+      $('hvg-tbody').innerHTML = ranked.map(g => `
+        <tr>
+          <td><strong>${g.name}</strong> <span style="color:${g.isMarker ? 'var(--ok)' : 'var(--muted)'};">(${g.isMarker ? 'Marker' : 'HK'})</span></td>
+          <td class="num">${g.mu.toFixed(2)}</td>
+          <td class="num">${g.rawVar.toFixed(1)}</td>
+          <td class="num" style="font-weight:700;">${g.zd.toFixed(2)}</td>
+          <td style="font-weight:700;color:${g.sel ? 'var(--ok)' : 'var(--muted)'};">${g.sel ? 'HVG ✓' : '—'}</td>
+        </tr>
+      `).join('');
+
+      const c = prepCanvas($('hvg-canvas'));
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+
+      const pL = 40, pR = 14, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+      ctx.strokeStyle = cBorder; ctx.beginPath();
+      ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+      const xOf = (m) => pL + (m / 3.4) * pw;
+      const yOf = (z) => pT + ph - ((Math.max(-1.6, Math.min(3.4, z)) + 1.6) / 5.0) * ph;
+
+      if (hvgMode === 'hvg') {
+        ctx.save(); ctx.strokeStyle = cAcc; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(pL, yOf(minDisp)); ctx.lineTo(pL + pw, yOf(minDisp)); ctx.stroke(); ctx.restore();
+      }
+
+      GENE_POOL.forEach((g, i) => {
+        const px = xOf(g.mu), py = yOf(g.zd);
+        const sel = selFlags[i];
+        ctx.fillStyle = sel ? (g.isMarker ? cOk : cBad) : (cMuted + '66');
+        ctx.beginPath(); ctx.arc(px, py, sel ? 3.5 : 2.3, 0, Math.PI * 2); ctx.fill();
+      });
+
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.fillStyle = cOk;  ctx.fillText('● Selected Marker', pL + 6, pT + 11);
+      ctx.fillStyle = cBad; ctx.fillText('● Selected HK (false pick)', pL + 115, pT + 11);
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      ctx.fillText('Mean log-expression μ_g', pL + pw / 2 - 55, H - 7);
+    }
+
+    function renderPCA() {
+      const noise = +$('s-noise').value;
+      const kPcs = +$('s-kpcs').value;
+      $('v-noise').textContent = noise.toFixed(2);
+      $('v-kpcs').textContent = `${kPcs} PCs`;
+      $('flip-badge').textContent = `Sign = ${pc1Sign > 0 ? '+1' : '−1'} (|r| = 1.000)`;
+
+      const X = PCA_BASE.clean.map((r, i) => r.map((v, j) => v + noise * PCA_BASE.noiseMat[i][j]));
+      const pca = computePCA(X);
+      const cumK = pca.varRatio.slice(0, kPcs).reduce((a, b) => a + b, 0);
+
+      $('k-vr1').textContent = `${(pca.varRatio[0] * 100).toFixed(1)}%`;
+      $('k-vr2').textContent = `${(pca.varRatio[1] * 100).toFixed(1)}%`;
+      $('k-vrc').textContent = `${(cumK * 100).toFixed(1)}%`;
+      $('pca-var-badge').textContent = `Top-2 Var: ${((pca.varRatio[0] + pca.varRatio[1]) * 100).toFixed(1)}%`;
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+      const cAcc2 = cs.getPropertyValue('--accent2').trim();
+
+      // 1. Scree bar chart
+      const c1 = prepCanvas($('scree-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const pL = 38, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const maxE = Math.max(1, ...pca.eigenvalues) * 1.12;
+        const step = pw / pca.eigenvalues.length;
+        pca.eigenvalues.forEach((ev, i) => {
+          const bw = step * 0.62, x = pL + i * step + (step - bw) / 2;
+          const bh = (ev / maxE) * ph;
+          ctx.fillStyle = i < kPcs ? (i < 2 ? cAcc : cWarn) : (cMuted + '66');
+          ctx.fillRect(x, pT + ph - bh, bw, bh);
+          ctx.fillStyle = cMuted; ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'center';
+          ctx.fillText(`PC${i + 1}`, x + bw / 2, H - 7);
+        });
+        ctx.textAlign = 'left';
+        ctx.fillStyle = cAcc; ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillText('■ Signal PCs (1–2)   ■ Retained noise PCs', pL + 6, pT + 10);
+      }
+
+      // 2. Scores scatter (PC1 * pc1Sign vs PC2)
+      const c2 = prepCanvas($('scores-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 34, pR = 14, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xs = pca.scores.map(r => r[0] * pc1Sign);
+        const ys = pca.scores.map(r => r[1]);
+        const maxX = Math.max(3, ...xs.map(Math.abs)) * 1.12;
+        const maxY = Math.max(3, ...ys.map(Math.abs)) * 1.12;
+        const xOf = (v) => pL + ((v + maxX) / (2 * maxX)) * pw;
+        const yOf = (v) => pT + ph - ((v + maxY) / (2 * maxY)) * ph;
+
+        ctx.save(); ctx.strokeStyle = cBorder; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(xOf(0), pT); ctx.lineTo(xOf(0), pT + ph); ctx.moveTo(pL, yOf(0)); ctx.lineTo(pL + pw, yOf(0)); ctx.stroke(); ctx.restore();
+
+        const cols = [cAcc, cOk, cAcc2];
+        pca.scores.forEach((_, i) => {
+          ctx.fillStyle = cols[PCA_BASE.labels[i]];
+          ctx.beginPath(); ctx.arc(xOf(xs[i]), yOf(ys[i]), 3.5, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText(`PC1 (sign ${pc1Sign > 0 ? '+' : '−'})`, pL + pw / 2 - 30, H - 7);
+      }
+    }
+
+    $('btn-mode-hvg').addEventListener('click', () => { hvgMode = 'hvg'; $('btn-mode-hvg').classList.add('active'); $('btn-mode-raw').classList.remove('active'); renderHVG(); });
+    $('btn-mode-raw').addEventListener('click', () => { hvgMode = 'raw'; $('btn-mode-raw').classList.add('active'); $('btn-mode-hvg').classList.remove('active'); renderHVG(); });
+    $('btn-flip').addEventListener('click', () => { pc1Sign *= -1; renderPCA(); });
+    ['s-mdisp', 's-clip'].forEach(id => $(id).addEventListener('input', renderHVG));
+    ['s-noise', 's-kpcs'].forEach(id => $(id).addEventListener('input', renderPCA));
+    new ResizeObserver(() => { renderHVG(); renderPCA(); }).observe($('hvg-canvas'));
+    renderHVG();
+    renderPCA();
+  </script>
+</body>
+</html>

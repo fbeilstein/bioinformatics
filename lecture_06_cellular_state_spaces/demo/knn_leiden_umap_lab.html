@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curse of Dimensionality, Fuzzy k-NN, Leiden &amp; UMAP Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; align-items: center; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px;
+      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 7px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Curse of dimensionality, fuzzy k-NN, Leiden and UMAP labs">
+    <button type="button" role="tab" id="tab-knn" aria-selected="true">1. Curse of Dimensionality &amp; Fuzzy k-NN</button>
+    <button type="button" role="tab" id="tab-lei" aria-selected="false">2. Leiden Resolution γ &amp; UMAP Seed Invariance</button>
+  </div>
+
+  <!-- TAB 1: Curse + Fuzzy k-NN -->
+  <div role="tabpanel" id="panel-knn" aria-labelledby="tab-knn">
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Ambient Dimension p (log)</span><span class="ctrl-val" id="v-dim">40 D (PCA)</span></span>
+        <input type="range" id="s-dim" min="0.30" max="3.30" step="0.05" value="1.60"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>k-NN Neighbors k</span><span class="ctrl-val" id="v-k">8</span></span>
+        <input type="range" id="s-k" min="3" max="15" step="1" value="8"></label>
+      <div style="display:flex; gap:5px; justify-content:flex-end;">
+        <button type="button" class="btn" data-dim="0.48">3D</button>
+        <button type="button" class="btn active" data-dim="1.60">40D PCA</button>
+        <button type="button" class="btn" data-dim="3.26">1,838 HVGs</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Pairwise Euclidean Distances in ℝ^p (Normalized)</span>
+          <span class="badge" id="curse-badge">CV = 11.2%</span>
+        </div>
+        <canvas id="curse-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Fuzzy k-NN Graph (Adaptive σ_i &amp; Symmetrization)</span>
+          <span class="badge ok" id="knn-edge-badge">Edges: —</span>
+        </div>
+        <canvas id="knn-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Relative Contrast (d_max−d_min)/d_min</div><div class="kpi-val" id="k-rc">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Theoretical Distance CV 1/√(2p)</div><div class="kpi-val" id="k-cv">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Dense vs Sparse σ_i Ratio</div><div class="kpi-val" id="k-sig" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Target Affinity Sum log₂(k)</div><div class="kpi-val" id="k-logk">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Leiden Resolution & UMAP Seed -->
+  <div role="tabpanel" id="panel-lei" aria-labelledby="tab-lei" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Leiden Resolution γ</span><span class="ctrl-val" id="v-gam">0.90</span></span>
+        <input type="range" id="s-gam" min="0.10" max="2.20" step="0.05" value="0.90"></label>
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="btn primary" id="btn-seed">Shuffle UMAP random_state</button>
+      </div>
+      <div style="display:flex; gap:6px; justify-content:flex-end;">
+        <button type="button" class="btn active" id="btn-leiden">Leiden (Connected ✓)</button>
+        <button type="button" class="btn" id="btn-louvain">Louvain Bridge Flaw</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Fixed k-NN Graph Partition (Leiden Communities)</span>
+          <span class="badge ok" id="lei-k-badge">3 Lineages / 6 Subtypes</span>
+        </div>
+        <canvas id="leiden-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>2D UMAP Projection (Seed = <span id="umap-seed-lbl">0</span>)</span>
+          <span class="badge" id="umap-inv-badge">Leiden Labels 100% Unchanged!</span>
+        </div>
+        <canvas id="umap-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Resolution γ</div><div class="kpi-val" id="k-gam">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Clusters Found</div><div class="kpi-val" id="k-ncl" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Modularity Q(γ)</div><div class="kpi-val" id="k-mod">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Internal Connectedness</div><div class="kpi-val" id="k-conn" style="color:var(--ok);">100% Connected</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderTab1();
+      renderTab2();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderTab1(); else renderTab2(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Pure UMAP Adaptive Sigma, Fuzzy Union & Modularity Math ----
+    function solveUmapSigma(sortedDists, k) {
+      // sortedDists: ascending distances to k-1 non-self neighbors (length >= 1)
+      const target = Math.log2(k);
+      const rho = sortedDists[0];
+      let lo = 1e-6, hi = 1e4;
+      for (let it = 0; it < 64; it++) {
+        const mid = 0.5 * (lo + hi);
+        let sum = 0;
+        for (const d of sortedDists) sum += Math.exp(-Math.max(0, d - rho) / mid);
+        if (sum > target) hi = mid; else lo = mid;
+      }
+      return 0.5 * (lo + hi);
+    }
+
+    function fuzzyUnionSymmetrize(P) {
+      const n = P.length;
+      const S = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (let i = 0; i < n; i++) {
+        for (let j = i; j < n; j++) {
+          const v = P[i][j] + P[j][i] - P[i][j] * P[j][i];
+          S[i][j] = S[j][i] = v;
+        }
+      }
+      return S;
+    }
+
+    function computeModularity(A, labels, gamma) {
+      const n = A.length;
+      const deg = A.map(row => row.reduce((a, b) => a + b, 0));
+      const twoM = deg.reduce((a, b) => a + b, 0);
+      if (twoM <= 0) return 0;
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          if (labels[i] === labels[j]) sum += A[i][j] - gamma * (deg[i] * deg[j]) / twoM;
+        }
+      }
+      return sum / twoM;
+    }
+
+    // ---- Curved Manifold Points (Dense top + Sparse bottom) ----
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const ARC_PTS = (() => {
+      const r = mulberry32(7101);
+      const pts = [];
+      for (let i = 0; i < 24; i++) {
+        const th = 0.20 * Math.PI + (0.75 * Math.PI) * (i / 23);
+        pts.push([2.2 * Math.cos(th) + (r() - 0.5) * 0.16, 2.2 * Math.sin(th) + (r() - 0.5) * 0.16]);
+      }
+      for (let i = 0; i < 12; i++) {
+        const th = 1.05 * Math.PI + (0.75 * Math.PI) * (i / 11);
+        pts.push([2.2 * Math.cos(th) + (r() - 0.5) * 0.16, 2.2 * Math.sin(th) + (r() - 0.5) * 0.16]);
+      }
+      return pts;
+    })();
+
+    // Hierarchical 36-node graph: 3 broad lineages, each split into 2 denser 6-node subtypes
+    const HIER_GRAPH = (() => {
+      const r = mulberry32(7102);
+      const subCenters = [
+        [-2.7,  1.8], [-1.5,  2.3], // Lineage 0: CD4 T / CD8 T
+        [ 1.5,  2.3], [ 2.7,  1.8], // Lineage 1: CD14 Mono / FCGR3A Mono
+        [-0.7, -2.0], [ 0.7, -2.0], // Lineage 2: B / Plasma
+      ];
+      const nodes = [];
+      for (let s = 0; s < 6; s++) {
+        for (let i = 0; i < 6; i++) {
+          const ang = (2 * Math.PI * i) / 6;
+          nodes.push({
+            x: subCenters[s][0] + 0.42 * Math.cos(ang) + (r() - 0.5) * 0.12,
+            y: subCenters[s][1] + 0.42 * Math.sin(ang) + (r() - 0.5) * 0.12,
+            sub: s, lin: Math.floor(s / 2),
+          });
+        }
+      }
+      const n = nodes.length;
+      const A = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          let w = 0;
+          if (nodes[i].sub === nodes[j].sub) w = 1.0;
+          else if (nodes[i].lin === nodes[j].lin && ((i + j) % 3 === 0)) w = 0.35;
+          else if (i % 6 === 0 && j % 6 === 0) w = 0.04;
+          A[i][j] = A[j][i] = w;
+        }
+      }
+      return { nodes, A };
+    })();
+
+    let umapSeed = 0;
+    let clustMode = 'leiden';
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function renderTab1() {
+      const p = Math.max(2, Math.round(Math.pow(10, +$('s-dim').value)));
+      const k = +$('s-k').value;
+      $('v-dim').textContent = `${p.toLocaleString()} D`;
+      $('v-k').textContent = k;
+      $('k-logk').textContent = Math.log2(k).toFixed(2);
+
+      // Exact Chi distribution approximation for pairwise Euclidean distance in R^p:
+      // ||x - y||^2 ~ 2 * chi2(p), mean ~ sqrt(2p - 1), SD ~ 1 / sqrt(2) -> CV ~ 1 / sqrt(2p)
+      const cv = 1 / Math.sqrt(2 * p);
+      // Sample 240 normalized pairwise distances via Wilson-Hilferty chi-square cube-root approx
+      const rand = mulberry32(7200 + p);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, rand()))) * Math.cos(2 * Math.PI * rand());
+      const dists = [];
+      for (let i = 0; i < 240; i++) {
+        const z = rn();
+        const h = 2 / (9 * p);
+        const chi2 = p * Math.pow(Math.max(0.05, 1 - h + z * Math.sqrt(h)), 3);
+        dists.push(Math.sqrt(chi2 / p));
+      }
+      const dMin = Math.min(...dists), dMax = Math.max(...dists);
+      const rc = (dMax - dMin) / Math.max(1e-6, dMin);
+      $('k-rc').textContent = rc.toFixed(3);
+      $('k-cv').textContent = `${(cv * 100).toFixed(2)}%`;
+      $('curse-badge').textContent = `CV = ${(cv * 100).toFixed(1)}%`;
+      $('curse-badge').className = cv < 0.05 ? 'badge bad' : 'badge ok';
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+
+      // 1. Curse histogram
+      const c1 = prepCanvas($('curse-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const pL = 34, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xMin = 0.2, xMax = 1.9, nBins = 34;
+        const bins = new Array(nBins).fill(0);
+        dists.forEach(d => {
+          const b = Math.floor(((d - xMin) / (xMax - xMin)) * nBins);
+          if (b >= 0 && b < nBins) bins[b]++;
+        });
+        const maxB = Math.max(10, ...bins);
+        for (let b = 0; b < nBins; b++) {
+          const x = pL + (b / nBins) * pw, w = Math.max(2, pw / nBins - 1);
+          const bh = (bins[b] / maxB) * (ph * 0.90);
+          ctx.fillStyle = cv < 0.05 ? cBad : cAcc;
+          ctx.fillRect(x, pT + ph - bh, w, bh);
+        }
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('0.2', pL, H - 7);
+        ctx.fillText('1.0 (mean)', pL + pw * 0.43, H - 7);
+        ctx.fillText('1.9', pL + pw - 18, H - 7);
+      }
+
+      // 2. Fuzzy k-NN on curved manifold
+      const n = ARC_PTS.length;
+      const P = Array.from({ length: n }, () => new Array(n).fill(0));
+      const sigmas = [];
+      for (let i = 0; i < n; i++) {
+        const nbrs = ARC_PTS.map((q, j) => ({ j, d: Math.hypot(ARC_PTS[i][0] - q[0], ARC_PTS[i][1] - q[1]) }))
+          .filter(o => o.j !== i).sort((a, b) => a.d - b.d).slice(0, k - 1);
+        const sig = solveUmapSigma(nbrs.map(o => o.d), k);
+        sigmas.push(sig);
+        const rho = nbrs[0].d;
+        nbrs.forEach(o => { P[i][o.j] = Math.exp(-Math.max(0, o.d - rho) / sig); });
+      }
+      const S = fuzzyUnionSymmetrize(P);
+      let nEdges = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (S[i][j] > 0.01) nEdges++;
+      $('knn-edge-badge').textContent = `Sym. Edges: ${nEdges}`;
+      const meanDenseSig = sigmas.slice(4, 18).reduce((a, b) => a + b, 0) / 14;
+      const meanSparseSig = sigmas.slice(26, 34).reduce((a, b) => a + b, 0) / 8;
+      $('k-sig').textContent = `${(meanSparseSig / Math.max(1e-6, meanDenseSig)).toFixed(2)}× wider`;
+
+      const c2 = prepCanvas($('knn-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 22, pR = 16, pT = 14, pB = 18, pw = W - pL - pR, ph = H - pT - pB;
+        const sc = Math.min(pw, ph) / 5.6;
+        const cx = pL + pw / 2, cy = pT + ph / 2;
+        const xOf = (x) => cx + x * sc, yOf = (y) => cy - y * sc;
+
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            if (S[i][j] > 0.02) {
+              ctx.strokeStyle = cAcc; ctx.globalAlpha = Math.min(0.95, 0.15 + 0.8 * S[i][j]);
+              ctx.lineWidth = 0.8 + 1.8 * S[i][j];
+              ctx.beginPath(); ctx.moveTo(xOf(ARC_PTS[i][0]), yOf(ARC_PTS[i][1]));
+              ctx.lineTo(xOf(ARC_PTS[j][0]), yOf(ARC_PTS[j][1])); ctx.stroke();
+            }
+          }
+        }
+        ctx.globalAlpha = 1.0;
+        ARC_PTS.forEach((pt, idx) => {
+          ctx.fillStyle = idx < 24 ? cOk : cWarn;
+          ctx.beginPath(); ctx.arc(xOf(pt[0]), yOf(pt[1]), 3.5, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = cOk;   ctx.fillText('● Dense arc (tight σ_i)', 12, 16);
+        ctx.fillStyle = cWarn; ctx.fillText('● Sparse arc (wide σ_i)', 12, H - 8);
+      }
+    }
+
+    function renderTab2() {
+      const gam = +$('s-gam').value;
+      $('v-gam').textContent = gam.toFixed(2);
+      $('k-gam').textContent = gam.toFixed(2);
+      $('umap-seed-lbl').textContent = umapSeed;
+
+      // Exact modularity comparison of candidate partitions: 1 mega, 3 lineages, 6 subtypes, or Louvain flawed
+      const { nodes, A } = HIER_GRAPH;
+      const p1 = nodes.map(() => 0);
+      const p3 = nodes.map(nd => nd.lin);
+      const p6 = nodes.map(nd => nd.sub);
+      const cands = [
+        { k: 1, lbls: p1, q: computeModularity(A, p1, gam) },
+        { k: 3, lbls: p3, q: computeModularity(A, p3, gam) },
+        { k: 6, lbls: p6, q: computeModularity(A, p6, gam) },
+      ].sort((a, b) => b.q - a.q);
+
+      let chosen = cands[0];
+      let connText = '100% Connected ✓';
+      let labels = [...chosen.lbls];
+      if (clustMode === 'louvain') {
+        // Demonstrate disconnected cluster bug on Lineage 0 (sub 0 & sub 1 split by bridge moved to Lineage 1)
+        labels = [...p3];
+        labels[5] = 1; // bridge node moved -> sub 0 & sub 1 lose bridge yet keep label 0
+        chosen = { k: 3, q: computeModularity(A, labels, gam) };
+        connText = '⚠ Comm. 0 Disconnected!';
+      }
+
+      $('k-ncl').textContent = chosen.k;
+      $('k-mod').textContent = chosen.q.toFixed(3);
+      $('k-conn').textContent = connText;
+      $('k-conn').style.color = clustMode === 'louvain' ? 'var(--bad)' : 'var(--ok)';
+      $('lei-k-badge').textContent = `${chosen.k} cluster${chosen.k > 1 ? 's' : ''} (Q = ${chosen.q.toFixed(2)})`;
+      $('lei-k-badge').className = clustMode === 'louvain' ? 'badge bad' : 'badge ok';
+
+      const cs = getComputedStyle(document.documentElement);
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const palette = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
+
+      // 1. Graph partition canvas
+      const c1 = prepCanvas($('leiden-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const sc = Math.min(W, H) / 6.8, cx = W / 2, cy = H / 2;
+        const xOf = (x) => cx + x * sc, yOf = (y) => cy - y * sc;
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            if (A[i][j] > 0) {
+              ctx.strokeStyle = cBorder; ctx.lineWidth = 0.6 + 1.4 * A[i][j];
+              ctx.beginPath(); ctx.moveTo(xOf(nodes[i].x), yOf(nodes[i].y));
+              ctx.lineTo(xOf(nodes[j].x), yOf(nodes[j].y)); ctx.stroke();
+            }
+          }
+        }
+        nodes.forEach((nd, i) => {
+          ctx.fillStyle = palette[labels[i] % palette.length];
+          ctx.beginPath(); ctx.arc(xOf(nd.x), yOf(nd.y), 5.0, 0, Math.PI * 2); ctx.fill();
+        });
+      }
+
+      // 2. Seed-dependent UMAP layout (rotates & warps inter-lineage gaps while keeping Leiden colors identical!)
+      const c2 = prepCanvas($('umap-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const r = mulberry32(8800 + umapSeed * 97);
+        const angle = r() * Math.PI * 2;
+        const flipX = r() < 0.5 ? 1 : -1;
+        // Random inter-lineage drift vectors (illustrating non-metric global UMAP spacing!)
+        const shifts = [0, 1, 2].map(() => [(r() - 0.5) * 1.4, (r() - 0.5) * 1.4]);
+        const sc = Math.min(W, H) / 8.0, cx = W / 2, cy = H / 2;
+        nodes.forEach((nd, i) => {
+          const sx = nd.x + shifts[nd.lin][0], sy = nd.y + shifts[nd.lin][1];
+          const rx = flipX * (sx * Math.cos(angle) - sy * Math.sin(angle));
+          const ry = sx * Math.sin(angle) + sy * Math.cos(angle);
+          ctx.fillStyle = palette[labels[i] % palette.length];
+          ctx.beginPath(); ctx.arc(cx + rx * sc, cy - ry * sc, 5.2, 0, Math.PI * 2); ctx.fill();
+        });
+      }
+    }
+
+    document.querySelectorAll('[data-dim]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-dim]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        $('s-dim').value = btn.dataset.dim;
+        renderTab1();
+      });
+    });
+    ['s-dim', 's-k'].forEach(id => $(id).addEventListener('input', renderTab1));
+    $('s-gam').addEventListener('input', renderTab2);
+    $('btn-seed').addEventListener('click', () => { umapSeed = (umapSeed + 1) % 20; renderTab2(); });
+    $('btn-leiden').addEventListener('click', () => { clustMode = 'leiden'; $('btn-leiden').classList.add('active'); $('btn-louvain').classList.remove('active'); renderTab2(); });
+    $('btn-louvain').addEventListener('click', () => { clustMode = 'louvain'; $('btn-louvain').classList.add('active'); $('btn-leiden').classList.remove('active'); renderTab2(); });
+    new ResizeObserver(() => { renderTab1(); renderTab2(); }).observe($('curse-canvas'));
+    renderTab1();
+    renderTab2();
+  </script>
+</body>
+</html>
+
