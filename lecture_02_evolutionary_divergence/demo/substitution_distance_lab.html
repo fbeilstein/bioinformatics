@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>BLOSUM62 Log-Odds &amp; Multiple-Hits Saturation Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228;
+      --surface-dark: #2a2e37;
+      --surface2-dark: #181a20;
+      --border-dark: #3d4350;
+      --text-dark: #e8ecf2;
+      --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6;
+      --good-dark: #66bb6a;
+      --warn-dark: #ffb74d;
+      --bad-dark: #ef5350;
+      --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb;
+      --surface-light: #ffffff;
+      --surface2-light: #eef2f7;
+      --border-light: #d4dce6;
+      --text-light: #1a202c;
+      --muted-light: #5a6578;
+      --accent-light: #1565c0;
+      --good-light: #2e7d32;
+      --warn-light: #d97706;
+      --bad-light: #c62828;
+      --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+      --purple: var(--purple-dark);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+        --bad: var(--bad-light); --purple: var(--purple-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+      --bad: var(--bad-light); --purple: var(--purple-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      accent-color: var(--accent);
+    }
+
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    /* Accessible single-row tablist with ::after border indicator (WCAG 1.4.1) */
+    .tablist {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+      overflow-x: auto;
+    }
+    .tablist [role="tab"] {
+      position: relative;
+      flex: none;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 7px 14px 9px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tablist [role="tab"][aria-selected="true"] {
+      color: var(--accent);
+    }
+    .tablist [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      border-block-end: 3px solid var(--accent);
+    }
+
+    .panel-inner {
+      display: grid;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .grid-blosum { grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.9fr); }
+    .grid-sat { grid-template-columns: minmax(270px, 0.85fr) minmax(0, 1.35fr); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .card-title { font-weight: 700; font-size: 13px; margin-bottom: 7px; }
+
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: 485px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface2);
+    }
+
+    table.bmat {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      text-align: center;
+    }
+    table.bmat th {
+      position: sticky;
+      background: var(--surface);
+      color: var(--text);
+      padding: 2px 3px;
+      font-weight: 700;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    table.bmat thead th { inset-block-start: 0; z-index: 2; }
+    table.bmat tbody th { inset-inline-start: 0; z-index: 1; }
+    table.bmat thead th:first-child { inset-inline-start: 0; z-index: 3; }
+
+    table.bmat td {
+      padding: 2px 2px;
+      min-width: 22px;
+      height: 21px;
+      cursor: pointer;
+      border-right: 1px solid rgba(128,128,128,0.16);
+      border-bottom: 1px solid rgba(128,128,128,0.16);
+      user-select: none;
+    }
+    table.bmat td.g-right { border-right: 2px solid var(--muted); }
+    table.bmat td.g-bot { border-bottom: 2px solid var(--muted); }
+    table.bmat td.sel-pair { outline: 2.5px solid var(--warn); outline-offset: -2px; font-weight: 800; z-index: 1; }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 8px 0;
+    }
+    .kv {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .kv-lbl { font-size: 11px; color: var(--muted); }
+    .kv-val { font-size: 15px; font-weight: 700; font-family: ui-monospace, monospace; }
+
+    .status-pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .status-good { background: rgba(102, 187, 106, 0.2); color: var(--good); }
+    .status-bad  { background: rgba(239, 83, 80, 0.22); color: var(--bad); }
+
+    .ctrl-row {
+      margin-bottom: 8px;
+    }
+    .ctrl-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .ctrl-head strong { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; }
+    select, button.btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme button.btn.primary { color: #0f172a; }
+
+    .site-strip {
+      display: grid;
+      grid-template-columns: repeat(25, 1fr);
+      gap: 2px;
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+    .site-cell {
+      height: 15px;
+      border-radius: 2px;
+      font-size: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-monospace, monospace;
+      font-weight: 700;
+    }
+
+    canvas#sat-canvas {
+      width: 100%;
+      height: 310px;
+      display: block;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .legend-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Scoring and Distance Labs">
+    <button type="button" role="tab" id="tab-blosum" aria-selected="true">1. BLOSUM62 Log-Odds &amp; E[S]</button>
+    <button type="button" role="tab" id="tab-sat" aria-selected="false">2. Multiple-Hits Saturation Simulator</button>
+  </div>
+
+  <!-- TAB 1: BLOSUM62 -->
+  <div role="tabpanel" id="panel-blosum" aria-labelledby="tab-blosum">
+    <div class="panel-inner grid-blosum">
+      <div class="card">
+        <div class="card-title">BLOSUM62 (Grouped by Chemistry — Click Any Pair)</div>
+        <div tabindex="0" role="region" aria-label="BLOSUM62 substitution matrix" class="table-wrapper">
+          <table class="bmat" id="blosum-table"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="pair-title">Pair W ↔ W (Tryptophan)</div>
+        <div id="pair-note" style="font-size:12px; color:var(--muted); margin-bottom:6px;"></div>
+        <div class="kv-grid">
+          <div class="kv">
+            <div class="kv-lbl">Half-Bit Score S(a,b)</div>
+            <div class="kv-val" id="kv-score">+11</div>
+          </div>
+          <div class="kv">
+            <div class="kv-lbl">Implied Odds p_ab / (q_a q_b)</div>
+            <div class="kv-val" id="kv-odds">45.3×</div>
+          </div>
+          <div class="kv">
+            <div class="kv-lbl">Background q_a · q_b</div>
+            <div class="kv-val" id="kv-bg">0.013 · 0.013</div>
+          </div>
+          <div class="kv">
+            <div class="kv-lbl">Information (bits)</div>
+            <div class="kv-val" id="kv-bits">+5.50</div>
+          </div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--border); margin:10px 0;">
+
+        <div class="card-title">Karlin–Altschul Local Alignment Condition</div>
+        <div class="ctrl-row">
+          <div class="ctrl-head">
+            <span>Uniform Score Offset Δ (half-bits)</span>
+            <strong id="lbl-delta">0.0</strong>
+          </div>
+          <input type="range" id="rng-delta" min="-2.0" max="2.5" step="0.1" value="0.0">
+        </div>
+        <div class="kv-grid">
+          <div class="kv">
+            <div class="kv-lbl">Expected Score E[S + Δ]</div>
+            <div class="kv-val" id="kv-es">−1.00</div>
+          </div>
+          <div class="kv">
+            <div class="kv-lbl">E[S + Δ] (bits)</div>
+            <div class="kv-val" id="kv-es-bits">−0.50</div>
+          </div>
+        </div>
+        <div id="es-status" class="status-pill status-good">✓ E[S] &lt; 0 — Local (Smith–Waterman) alignment well-posed</div>
+        <p style="font-size:11.5px; color:var(--muted); margin:8px 0 0;">
+          Compare <strong>W–W (+11)</strong> vs. <strong>A–A (+4)</strong>: Alanine is ~5.7× more common than Tryptophan, so matching a rare Trp carries far more homology evidence!
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: MULTIPLE HITS -->
+  <div role="tabpanel" id="panel-sat" aria-labelledby="tab-sat" hidden>
+    <div class="panel-inner grid-sat">
+      <div class="card">
+        <div class="card-title">Evolutionary Simulator Controls</div>
+        <div class="ctrl-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="sat-alpha" aria-label="Sequence alphabet">
+            <option value="dna">DNA (4 bases, JC69 ceiling p = 0.75)</option>
+            <option value="protein">Protein (20 aa, Poisson model)</option>
+          </select>
+          <button type="button" class="btn primary" id="btn-resample">Resample</button>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>True Divergence d (subs / site)</span><strong id="lbl-d">0.80</strong></div>
+          <input type="range" id="rng-d" min="0.02" max="2.80" step="0.02" value="0.80">
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Sequence Length L (sites)</span><strong id="lbl-L">150</strong></div>
+          <input type="range" id="rng-L" min="60" max="500" step="10" value="150">
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Site-Rate Heterogeneity</span><strong id="lbl-gamma">Uniform (α = ∞)</strong></div>
+          <select id="sel-gamma" style="width:100%;" aria-label="Rate heterogeneity">
+            <option value="inf">Uniform rates across sites (α = ∞)</option>
+            <option value="2.0">Moderate Gamma heterogeneity (α = 2.0)</option>
+            <option value="0.7">Strong Gamma heterogeneity (α = 0.7)</option>
+          </select>
+        </div>
+
+        <div class="kv-grid">
+          <div class="kv"><div class="kv-lbl">Observed p (raw diff)</div><div class="kv-val" id="sat-p">—</div></div>
+          <div class="kv"><div class="kv-lbl">Hidden / Back-Hits</div><div class="kv-val" id="sat-hidden">—</div></div>
+          <div class="kv"><div class="kv-lbl">Poisson d̂ ± 1.96 SE</div><div class="kv-val" id="sat-pois">—</div></div>
+          <div class="kv"><div class="kv-lbl" id="sat-jc-lbl">JC69 d̂ ± 1.96 SE</div><div class="kv-val" id="sat-jc">—</div></div>
+        </div>
+
+        <div class="card-title" style="margin-top:6px; font-size:12px;">First 100 Sites — Hit History</div>
+        <div class="site-strip" id="site-strip"></div>
+        <div class="legend-inline">
+          <span><span class="dot" style="background:#3b82f6;"></span>0 hits</span>
+          <span><span class="dot" style="background:#f59e0b;"></span>1 hit</span>
+          <span><span class="dot" style="background:#ef4444;"></span>≥2 hits (diff)</span>
+          <span><span class="dot" style="background:#a855f7;"></span>Back-mutation (same!)</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Observed Difference p vs. True Distance d (with Live Simulation &amp; 95% CI)</div>
+        <canvas id="sat-canvas" width="760" height="310"></canvas>
+        <div class="legend-inline" style="margin-top:8px;">
+          <span><span class="dot" style="background:#94a3b8;"></span>No multiple hits (p = d)</span>
+          <span><span class="dot" style="background:#2563eb;"></span>Poisson (1 − e⁻ᵈ)</span>
+          <span><span class="dot" style="background:#dc2626;"></span>JC69 DNA (¾(1 − e⁻⁴ᵈ/³))</span>
+          <span><span class="dot" style="background:#10b981;"></span>Simulated (d_true, p_obs)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Theme Sync ----
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      drawSatChart();
+      renderBlosumTable();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    // ---- Accessible Tabs ----
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => {
+        const active = i === idx;
+        t.setAttribute('aria-selected', String(active));
+        panels[i].hidden = !active;
+      });
+      if (idx === 1) requestAnimationFrame(drawSatChart);
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Range Progress Fallback ----
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => {
+          const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+          el.style.setProperty('--progress', pct + '%');
+        };
+        el.addEventListener('input', upd);
+        upd();
+      });
+    }
+
+    // ---- TAB 1: Exact Biopython BLOSUM62 + Henikoff frequencies ----
+    const AA_STD = "ARNDCQEGHILKMFPSTWYV";
+    const B62_STD = [
+      [4,-1,-2,-2,0,-1,-1,0,-2,-1,-1,-1,-1,-2,-1,1,0,-3,-2,0],
+      [-1,5,0,-2,-3,1,0,-2,0,-3,-2,2,-1,-3,-2,-1,-1,-3,-2,-3],
+      [-2,0,6,1,-3,0,0,0,1,-3,-3,0,-2,-3,-2,1,0,-4,-2,-3],
+      [-2,-2,1,6,-3,0,2,-1,-1,-3,-4,-1,-3,-3,-1,0,-1,-4,-3,-3],
+      [0,-3,-3,-3,9,-3,-4,-3,-3,-1,-1,-3,-1,-2,-3,-1,-1,-2,-2,-1],
+      [-1,1,0,0,-3,5,2,-2,0,-3,-2,1,0,-3,-1,0,-1,-2,-1,-2],
+      [-1,0,0,2,-4,2,5,-2,0,-3,-3,1,-2,-3,-1,0,-1,-3,-2,-2],
+      [0,-2,0,-1,-3,-2,-2,6,-2,-4,-4,-2,-3,-3,-2,0,-2,-2,-3,-3],
+      [-2,0,1,-1,-3,0,0,-2,8,-3,-3,-1,-2,-1,-2,-1,-2,-2,2,-3],
+      [-1,-3,-3,-3,-1,-3,-3,-4,-3,4,2,-3,1,0,-3,-2,-1,-3,-1,3],
+      [-1,-2,-3,-4,-1,-2,-3,-4,-3,2,4,-2,2,0,-3,-2,-1,-2,-1,1],
+      [-1,2,0,-1,-3,1,1,-2,-1,-3,-2,5,-1,-3,-1,0,-1,-3,-2,-2],
+      [-1,-1,-2,-3,-1,0,-2,-3,-2,1,2,-1,5,0,-2,-1,-1,-1,-1,1],
+      [-2,-3,-3,-3,-2,-3,-3,-3,-1,0,0,-3,0,6,-4,-2,-2,1,3,-1],
+      [-1,-2,-2,-1,-3,-1,-1,-2,-2,-3,-3,-1,-2,-4,7,-1,-1,-4,-3,-2],
+      [1,-1,1,0,-1,0,0,0,-1,-2,-2,0,-1,-2,-1,4,1,-3,-2,-2],
+      [0,-1,0,-1,-1,-1,-1,-2,-2,-1,-1,-1,-1,-2,-1,1,5,-2,-2,0],
+      [-3,-3,-4,-4,-2,-2,-3,-2,-2,-3,-2,-3,-1,1,-4,-3,-2,11,2,-3],
+      [-2,-2,-2,-3,-2,-1,-2,-3,2,-1,-1,-2,-1,3,-3,-2,-2,2,7,-1],
+      [0,-3,-3,-3,-1,-2,-2,-3,-3,3,1,-2,1,-1,-2,-2,0,-3,-1,4]
+    ];
+    const Q_BG = {
+      A:0.074, R:0.052, N:0.045, D:0.054, C:0.025, Q:0.034, E:0.054, G:0.074, H:0.026, I:0.068,
+      L:0.099, K:0.058, M:0.025, F:0.047, P:0.039, S:0.057, T:0.051, W:0.013, Y:0.032, V:0.073
+    };
+    const AA_NAMES = {
+      A:'Alanine (aliphatic)', V:'Valine (aliphatic)', I:'Isoleucine (aliphatic)', L:'Leucine (aliphatic)', M:'Methionine (hydrophobic)',
+      F:'Phenylalanine (aromatic)', W:'Tryptophan (rare bulky aromatic)', Y:'Tyrosine (aromatic)',
+      S:'Serine (polar)', T:'Threonine (polar)', N:'Asparagine (polar)', Q:'Glutamine (polar)',
+      K:'Lysine (basic +)', R:'Arginine (basic +)', H:'Histidine (basic/aromatic)',
+      D:'Aspartate (acidic −)', E:'Glutamate (acidic −)',
+      C:'Cysteine (disulfide bonds)', G:'Glycine (flexible backbone)', P:'Proline (rigid ring kink)'
+    };
+    const AA_GRP = "AVILMFWYSTNQKRHDECGP";
+    const GRP_ENDS = new Set([4, 7, 11, 14, 16]);
+
+    function bScore(a, b) {
+      return B62_STD[AA_STD.indexOf(a)][AA_STD.indexOf(b)];
+    }
+
+    let selPair = ['W', 'W'];
+
+    function blosumColor(v) {
+      if (v > 0) {
+        const a = Math.min(0.85, 0.14 + 0.068 * v);
+        return `rgba(220, 38, 38, ${a.toFixed(2)})`;
+      } else if (v < 0) {
+        const a = Math.min(0.68, 0.12 + 0.13 * Math.abs(v));
+        return `rgba(37, 99, 235, ${a.toFixed(2)})`;
+      }
+      return 'transparent';
+    }
+
+    function renderBlosumTable() {
+      let html = '<thead><tr><th></th>';
+      for (const b of AA_GRP) html += `<th>${b}</th>`;
+      html += '</tr></thead><tbody>';
+      for (let i = 0; i < 20; i++) {
+        const a = AA_GRP[i];
+        html += `<tr><th>${a}</th>`;
+        for (let j = 0; j < 20; j++) {
+          const b = AA_GRP[j];
+          const v = bScore(a, b);
+          const cls = [];
+          if (GRP_ENDS.has(j)) cls.push('g-right');
+          if (GRP_ENDS.has(i)) cls.push('g-bot');
+          if ((selPair[0] === a && selPair[1] === b) || (selPair[0] === b && selPair[1] === a)) cls.push('sel-pair');
+          const txtCol = (v >= 5 || v <= -4) ? '#fff' : 'var(--text)';
+          html += `<td class="${cls.join(' ')}" data-a="${a}" data-b="${b}" style="background:${blosumColor(v)};color:${txtCol};">${v}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody>';
+      document.getElementById('blosum-table').innerHTML = html;
+    }
+
+    function updatePairInfo() {
+      const [a, b] = selPair;
+      const delta = parseFloat(document.getElementById('rng-delta').value);
+      const rawS = bScore(a, b);
+      const adjS = rawS + delta;
+      const bits = adjS / 2;
+      const odds = Math.pow(2, bits);
+      document.getElementById('pair-title').textContent = `Pair ${a} ↔ ${b}` + (a === b ? ` (${AA_NAMES[a]})` : '');
+      document.getElementById('pair-note').textContent = a === b
+        ? `Conserved ${AA_NAMES[a]} — background frequency q = ${(Q_BG[a] * 100).toFixed(1)}%.`
+        : `${AA_NAMES[a]} ↔ ${AA_NAMES[b]}.`;
+      document.getElementById('kv-score').textContent = (adjS >= 0 ? '+' : '') + adjS.toFixed(delta === 0 ? 0 : 1);
+      document.getElementById('kv-odds').textContent = odds >= 1 ? odds.toFixed(2) + '×' : odds.toFixed(3) + '×';
+      document.getElementById('kv-bg').textContent = `${Q_BG[a].toFixed(3)} · ${Q_BG[b].toFixed(3)}`;
+      document.getElementById('kv-bits').textContent = (bits >= 0 ? '+' : '') + bits.toFixed(2);
+
+      // Compute E[S + delta]
+      let es = 0;
+      for (const x of AA_STD) {
+        for (const y of AA_STD) {
+          es += Q_BG[x] * Q_BG[y] * (bScore(x, y) + delta);
+        }
+      }
+      document.getElementById('lbl-delta').textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1);
+      document.getElementById('kv-es').textContent = (es >= 0 ? '+' : '') + es.toFixed(2);
+      document.getElementById('kv-es-bits').textContent = (es >= 0 ? '+' : '') + (es / 2).toFixed(2);
+      const st = document.getElementById('es-status');
+      if (es < 0) {
+        st.className = 'status-pill status-good';
+        st.textContent = '✓ E[S] < 0 — Local alignment finds genuine homologous islands';
+      } else {
+        st.className = 'status-pill status-bad';
+        st.textContent = '✗ E[S] ≥ 0 — Random matches score positively; local collapses to global!';
+      }
+    }
+
+    document.getElementById('blosum-table').addEventListener('click', (e) => {
+      const td = e.target.closest('td[data-a]');
+      if (!td) return;
+      selPair = [td.dataset.a, td.dataset.b];
+      renderBlosumTable();
+      updatePairInfo();
+    });
+    document.getElementById('rng-delta').addEventListener('input', updatePairInfo);
+
+    // ---- TAB 2: Monte Carlo Multiple-Hits Simulator ----
+    let simSeed = 42;
+    function mulberry32(a) {
+      return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function samplePoisson(lambda, rng) {
+      if (lambda <= 0) return 0;
+      if (lambda < 30) {
+        const L = Math.exp(-lambda);
+        let k = 0, p = 1;
+        do { k++; p *= rng(); } while (p > L);
+        return k - 1;
+      }
+      // Normal approx for large lambda
+      const u1 = Math.max(1e-12, rng()), u2 = rng();
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      return Math.max(0, Math.round(lambda + Math.sqrt(lambda) * z));
+    }
+
+    // Marsaglia & Tsang Gamma(alpha, 1/alpha) with mean 1
+    function sampleGammaMean1(alpha, rng) {
+      if (!isFinite(alpha)) return 1.0;
+      if (alpha < 1) {
+        return sampleGammaMean1(alpha + 1, rng) * Math.pow(Math.max(1e-12, rng()), 1 / alpha) * ((alpha + 1) / alpha);
+      }
+      const d = alpha - 1 / 3;
+      const c = 1 / Math.sqrt(9 * d);
+      while (true) {
+        let x, v;
+        do {
+          const u1 = Math.max(1e-12, rng()), u2 = rng();
+          x = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+          v = 1 + c * x;
+        } while (v <= 0);
+        v = v * v * v;
+        const u = rng();
+        if (u < 1 - 0.0331 * x * x * x * x) return (d * v) / alpha;
+        if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return (d * v) / alpha;
+      }
+    }
+
+    let lastSim = null;
+
+    function runSimulation() {
+      const alphaType = document.getElementById('sat-alpha').value;
+      const K = alphaType === 'dna' ? 4 : 20;
+      const dTrue = parseFloat(document.getElementById('rng-d').value);
+      const L = parseInt(document.getElementById('rng-L').value, 10);
+      const gVal = document.getElementById('sel-gamma').value;
+      const gammaAlpha = gVal === 'inf' ? Infinity : parseFloat(gVal);
+
+      document.getElementById('lbl-d').textContent = dTrue.toFixed(2);
+      document.getElementById('lbl-L').textContent = String(L);
+      document.getElementById('lbl-gamma').textContent = gVal === 'inf' ? 'Uniform (α = ∞)' : `Gamma (α = ${gVal})`;
+
+      const rng = mulberry32(simSeed);
+      let diffCount = 0, totalHits = 0, backMut = 0, multiDiff = 0;
+      const siteHistory = [];
+
+      for (let i = 0; i < L; i++) {
+        const rate = sampleGammaMean1(gammaAlpha, rng);
+        const hits = samplePoisson(dTrue * rate, rng);
+        totalHits += hits;
+        let state = 0;
+        for (let h = 0; h < hits; h++) {
+          // Mutate to one of K-1 other states uniformly
+          const step = 1 + Math.floor(rng() * (K - 1));
+          state = (state + step) % K;
+        }
+        const isDiff = state !== 0;
+        if (isDiff) diffCount++;
+        if (hits >= 2 && !isDiff) backMut++;
+        if (hits >= 2 && isDiff) multiDiff++;
+        if (i < 100) siteHistory.push({ hits, isDiff });
+      }
+
+      const pObs = diffCount / L;
+      const dPois = pObs < 1 ? -Math.log(1 - pObs) : Infinity;
+      const sePois = pObs < 1 ? Math.sqrt(pObs / ((1 - pObs) * L)) : Infinity;
+      const dJC = pObs < 0.75 ? -0.75 * Math.log(1 - (4 / 3) * pObs) : Infinity;
+      const seJC = pObs < 0.75 ? Math.sqrt((pObs * (1 - pObs)) / (Math.pow(1 - (4 / 3) * pObs, 2) * L)) : Infinity;
+
+      document.getElementById('sat-p').textContent = `${pObs.toFixed(3)} (${diffCount}/${L})`;
+      const hiddenHits = Math.max(0, totalHits - diffCount);
+      document.getElementById('sat-hidden').textContent = `${hiddenHits} (${backMut} back)`;
+      document.getElementById('sat-pois').textContent = isFinite(dPois) ? `${dPois.toFixed(2)} ± ${(1.96 * sePois).toFixed(2)}` : '∞ (saturated)';
+
+      if (alphaType === 'dna') {
+        document.getElementById('sat-jc-lbl').textContent = 'JC69 d̂ ± 1.96 SE';
+        document.getElementById('sat-jc').textContent = isFinite(dJC) ? `${dJC.toFixed(2)} ± ${(1.96 * seJC).toFixed(2)}` : '∞ (p ≥ 0.75!)';
+      } else {
+        const dGam = isFinite(gammaAlpha) && pObs < 1 ? gammaAlpha * (Math.pow(1 - pObs, -1 / gammaAlpha) - 1) : dPois;
+        document.getElementById('sat-jc-lbl').textContent = isFinite(gammaAlpha) ? `Gamma d̂ (α=${gVal})` : 'Exact Avg Hits/Site';
+        document.getElementById('sat-jc').textContent = isFinite(gammaAlpha) ? (isFinite(dGam) ? dGam.toFixed(2) : '∞') : (totalHits / L).toFixed(2);
+      }
+
+      // Render site strip
+      const strip = document.getElementById('site-strip');
+      strip.innerHTML = siteHistory.map(s => {
+        let bg = '#3b82f6', txt = '0';
+        if (s.hits === 1) { bg = '#f59e0b'; txt = '1'; }
+        else if (s.hits >= 2 && s.isDiff) { bg = '#ef4444'; txt = String(Math.min(9, s.hits)); }
+        else if (s.hits >= 2 && !s.isDiff) { bg = '#a855f7'; txt = '↺'; }
+        return `<div class="site-cell" style="background:${bg};color:#fff;" title="${s.hits} hits (${s.isDiff ? 'different' : 'same'})">${txt}</div>`;
+      }).join('');
+
+      lastSim = { alphaType, dTrue, L, gammaAlpha, pObs, dPois, sePois, dJC, seJC };
+      drawSatChart();
+    }
+
+    function drawSatChart() {
+      const canvas = document.getElementById('sat-canvas');
+      if (!canvas || !lastSim) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+
+      const styles = getComputedStyle(document.documentElement);
+      const textCol = styles.getPropertyValue('--text').trim() || '#e8ecf2';
+      const mutedCol = styles.getPropertyValue('--muted').trim() || '#9aa3b2';
+      const borderCol = styles.getPropertyValue('--border').trim() || '#3d4350';
+
+      ctx.clearRect(0, 0, W, H);
+      const padL = 48, padR = 18, padT = 18, padB = 36;
+      const pw = W - padL - padR, ph = H - padT - padB;
+      const xOf = (d) => padL + (d / 3.0) * pw;
+      const yOf = (p) => padT + (1 - p) * ph;
+
+      // Grid
+      ctx.strokeStyle = borderCol;
+      ctx.lineWidth = 0.7;
+      ctx.font = '11px ui-monospace, monospace';
+      ctx.fillStyle = mutedCol;
+      for (let p = 0; p <= 1.001; p += 0.25) {
+        const y = yOf(p);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText(p.toFixed(2), padL - 6, y + 4);
+      }
+      for (let d = 0; d <= 3.001; d += 0.5) {
+        const x = xOf(d);
+        ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillText(d.toFixed(1), x, H - padB + 15);
+      }
+
+      // Axis labels
+      ctx.fillStyle = textCol;
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('True Evolutionary Distance d (substitutions / site)', padL + pw / 2, H - 5);
+      ctx.save();
+      ctx.translate(13, padT + ph / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Observed Difference p', 0, 0);
+      ctx.restore();
+
+      // JC69 ceiling line p = 0.75
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(padL, yOf(0.75)); ctx.lineTo(W - padR, yOf(0.75)); ctx.stroke();
+      ctx.fillStyle = '#dc2626';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('DNA ceiling p = 0.75', W - padR - 4, yOf(0.75) - 5);
+
+      // No multiple hits p = d
+      ctx.strokeStyle = '#94a3b8';
+      ctx.beginPath(); ctx.moveTo(xOf(0), yOf(0)); ctx.lineTo(xOf(1), yOf(1)); ctx.stroke();
+      ctx.restore();
+
+      // Poisson curve
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      for (let i = 0; i <= 150; i++) {
+        const d = (i / 150) * 3.0;
+        const p = 1 - Math.exp(-d);
+        if (i === 0) ctx.moveTo(xOf(d), yOf(p)); else ctx.lineTo(xOf(d), yOf(p));
+      }
+      ctx.stroke();
+
+      // JC69 curve
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      for (let i = 0; i <= 150; i++) {
+        const d = (i / 150) * 3.0;
+        const p = 0.75 * (1 - Math.exp(-4 * d / 3));
+        if (i === 0) ctx.moveTo(xOf(d), yOf(p)); else ctx.lineTo(xOf(d), yOf(p));
+      }
+      ctx.stroke();
+
+      // Gamma curve if active
+      if (isFinite(lastSim.gammaAlpha)) {
+        const a = lastSim.gammaAlpha;
+        const K = lastSim.alphaType === 'dna' ? 4 : 20;
+        const f = (K - 1) / K;
+        ctx.save();
+        ctx.setLineDash([6, 3]);
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        for (let i = 0; i <= 150; i++) {
+          const d = (i / 150) * 3.0;
+          const p = f * (1 - Math.pow(1 + d / (f * a), -a));
+          if (i === 0) ctx.moveTo(xOf(d), yOf(p)); else ctx.lineTo(xOf(d), yOf(p));
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Live simulated point + horizontal 95% CI on inferred d_hat
+      const sx = xOf(lastSim.dTrue), sy = yOf(lastSim.pObs);
+      const estD = lastSim.alphaType === 'dna' ? lastSim.dJC : lastSim.dPois;
+      const estSE = lastSim.alphaType === 'dna' ? lastSim.seJC : lastSim.sePois;
+      if (isFinite(estD) && isFinite(estSE)) {
+        const lo = Math.max(0, estD - 1.96 * estSE);
+        const hi = Math.min(3.0, estD + 1.96 * estSE);
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(xOf(lo), sy); ctx.lineTo(xOf(hi), sy);
+        ctx.moveTo(xOf(lo), sy - 5); ctx.lineTo(xOf(lo), sy + 5);
+        ctx.moveTo(xOf(hi), sy - 5); ctx.lineTo(xOf(hi), sy + 5);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke();
+    }
+
+    ['sat-alpha', 'rng-d', 'rng-L', 'sel-gamma'].forEach(id => {
+      document.getElementById(id).addEventListener('input', runSimulation);
+    });
+    document.getElementById('btn-resample').addEventListener('click', () => { simSeed += 137; runSimulation(); });
+    new ResizeObserver(() => drawSatChart()).observe(document.getElementById('sat-canvas'));
+
+    window.__satLab = { bScore, Q_BG };
+    renderBlosumTable();
+    updatePairInfo();
+    runSimulation();
+  </script>
+</body>
+</html>
+

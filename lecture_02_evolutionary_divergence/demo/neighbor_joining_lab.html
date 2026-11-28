@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>UPGMA vs. Neighbor-Joining Tree Builder</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228;
+      --surface-dark: #2a2e37;
+      --surface2-dark: #181a20;
+      --border-dark: #3d4350;
+      --text-dark: #e8ecf2;
+      --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6;
+      --good-dark: #66bb6a;
+      --warn-dark: #ffb74d;
+      --bad-dark: #ef5350;
+
+      --bg-light: #f6f8fb;
+      --surface-light: #ffffff;
+      --surface2-light: #eef2f7;
+      --border-light: #d4dce6;
+      --text-light: #1a202c;
+      --muted-light: #5a6578;
+      --accent-light: #1565c0;
+      --good-light: #2e7d32;
+      --warn-light: #d97706;
+      --bad-light: #c62828;
+
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark); --bad: var(--bad-dark);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light); --bad: var(--bad-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light); --bad: var(--bad-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark); --bad: var(--bad-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      accent-color: var(--accent);
+    }
+
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+    }
+
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    select, button.btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.btn:hover { border-color: var(--accent); color: var(--accent); }
+    button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme button.btn.primary { color: #0f172a; }
+
+    .diag-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .pill {
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-weight: 700;
+      font-size: 11.5px;
+      font-family: ui-monospace, monospace;
+    }
+    .pill-good { background: rgba(102, 187, 106, 0.2); color: var(--good); }
+    .pill-warn { background: rgba(255, 183, 77, 0.22); color: var(--warn); }
+    .pill-bad  { background: rgba(239, 83, 80, 0.22); color: var(--bad); }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .panel-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface2);
+      margin-bottom: 8px;
+    }
+
+    table.mat {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+      text-align: center;
+    }
+    table.mat th {
+      position: sticky;
+      background: var(--surface);
+      color: var(--text);
+      padding: 4px 6px;
+      font-weight: 700;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    table.mat thead th { inset-block-start: 0; z-index: 2; }
+    table.mat tbody th { inset-inline-start: 0; z-index: 1; text-align: left; }
+    table.mat td {
+      padding: 3px 5px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    table.mat td.nj-pick {
+      background: rgba(100, 181, 246, 0.28);
+      font-weight: 800;
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    table.mat td.upgma-pick {
+      background: rgba(255, 183, 77, 0.26);
+      font-weight: 800;
+      box-shadow: inset 0 0 0 2px var(--warn);
+    }
+    table.mat input.d-edit {
+      width: 48px;
+      text-align: center;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      border-radius: 3px;
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 1px 2px;
+    }
+    table.mat input.d-edit:focus {
+      border-color: var(--accent);
+      background: var(--surface);
+      outline: none;
+    }
+
+    .step-log {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+
+    .trees-stack {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 10px;
+    }
+    .tree-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .tree-box svg {
+      width: 100%;
+      height: 195px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <label class="field">Preset:
+      <select id="preset-sel" aria-label="Distance matrix preset">
+        <option value="trap">Unequal-Rate Clock Trap (4 taxa — UPGMA fails!)</option>
+        <option value="globin">Vertebrate Globin-Like (5 taxa, fast Mouse)</option>
+        <option value="clock">Strict Ultrametric Clock (4 taxa — both agree)</option>
+        <option value="five">Asymmetric 5-Taxon Additive Tree</option>
+      </select>
+    </label>
+    <label class="field">Noise σ:
+      <input type="range" id="rng-noise" min="0" max="2.5" step="0.25" value="0" style="width:90px;">
+      <strong id="lbl-noise" style="font-family:ui-monospace,monospace;color:var(--accent);">0.00</strong>
+    </label>
+    <label class="field">NJ Outgroup:
+      <select id="outgroup-sel" aria-label="Outgroup root taxon"></select>
+    </label>
+    <div style="display:inline-flex; gap:5px; margin-left:auto;">
+      <button type="button" class="btn" id="btn-prev">◀ Prev</button>
+      <button type="button" class="btn primary" id="btn-next">Next Step ▶</button>
+      <button type="button" class="btn" id="btn-reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="diag-bar" id="diag-bar"></div>
+
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-title">
+        <span id="dmat-title">Step 1: Distance Matrix D (editable at Step 1)</span>
+        <span style="font-size:11px; color:var(--warn);">Orange = min D (UPGMA)</span>
+      </div>
+      <div tabindex="0" role="region" aria-label="Distance matrix" class="table-wrapper">
+        <table class="mat" id="d-table"></table>
+      </div>
+
+      <div class="panel-title">
+        <span id="qmat-title">Rate-Corrected Q-Matrix: Q(i,j) = (n−2)d(i,j) − Rᵢ − Rⱼ</span>
+        <span style="font-size:11px; color:var(--accent);">Blue = min Q (NJ)</span>
+      </div>
+      <div tabindex="0" role="region" aria-label="Neighbor-Joining Q matrix" class="table-wrapper">
+        <table class="mat" id="q-table"></table>
+      </div>
+
+      <div class="step-log" id="step-log"></div>
+    </div>
+
+    <div class="panel">
+      <div class="trees-stack">
+        <div class="tree-box">
+          <div class="panel-title" style="margin-bottom:2px;">
+            <span style="color:var(--good);">Neighbor-Joining Tree (Outgroup-Rooted)</span>
+            <span id="nj-status" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <svg id="svg-nj" viewBox="0 0 540 195" role="img" aria-label="Neighbor-Joining phylogenetic tree"></svg>
+        </div>
+        <div class="tree-box">
+          <div class="panel-title" style="margin-bottom:2px;">
+            <span style="color:var(--warn);">UPGMA Tree (Assumes Strict Molecular Clock)</span>
+            <span id="upgma-status" style="font-size:11px;color:var(--muted);"></span>
+          </div>
+          <svg id="svg-upgma" viewBox="0 0 540 195" role="img" aria-label="UPGMA phylogenetic tree"></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Theme Sync ----
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      const el = document.getElementById('rng-noise');
+      const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+      el.addEventListener('input', upd); upd();
+    }
+
+    const PRESETS = {
+      trap: {
+        names: ['A', 'B', 'C', 'D'],
+        D: [
+          [0, 10, 5, 13],
+          [10, 0, 13, 21],
+          [5, 13, 0, 10],
+          [13, 21, 10, 0]
+        ],
+        outgroup: 'D'
+      },
+      globin: {
+        // Additive vertebrate-like distances with accelerated Mouse branch
+        names: ['Human', 'Mouse', 'Chicken', 'Zebrafish', 'Lamprey'],
+        D: [
+          [0, 14, 21, 31, 46],
+          [14, 0, 29, 39, 54],
+          [21, 29, 0, 28, 43],
+          [31, 39, 28, 0, 39],
+          [46, 54, 43, 39, 0]
+        ],
+        outgroup: 'Lamprey'
+      },
+      clock: {
+        names: ['A', 'B', 'C', 'D'],
+        D: [
+          [0, 4, 10, 10],
+          [4, 0, 10, 10],
+          [10, 10, 0, 6],
+          [10, 10, 6, 0]
+        ],
+        outgroup: 'D'
+      },
+      five: {
+        names: ['A', 'B', 'C', 'D', 'E'],
+        D: [
+          [0, 11, 7, 16, 12],
+          [11, 0, 14, 23, 19],
+          [7, 14, 0, 13, 9],
+          [16, 23, 13, 0, 12],
+          [12, 19, 9, 12, 0]
+        ],
+        outgroup: 'E'
+      }
+    };
+
+    // Deterministic noise offsets
+    const NOISE_GRID = [
+      [0, 0.8, -0.6, 0.4, -0.9],
+      [0.8, 0, 0.5, -0.7, 0.3],
+      [-0.6, 0.5, 0, 0.9, -0.4],
+      [0.4, -0.7, 0.9, 0, 0.6],
+      [-0.9, 0.3, -0.4, 0.6, 0]
+    ];
+
+    // ---- Metric Diagnostics: Buneman 4-Point & Ultrametric ----
+    function metricDiagnostics(D) {
+      const n = D.length;
+      let max4pt = 0, maxUltra = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          for (let k = j + 1; k < n; k++) {
+            const tri = [D[i][j], D[i][k], D[j][k]].sort((a, b) => a - b);
+            maxUltra = Math.max(maxUltra, tri[2] - tri[1]);
+            for (let l = k + 1; l < n; l++) {
+              const sums = [D[i][j] + D[k][l], D[i][k] + D[j][l], D[i][l] + D[j][k]].sort((a, b) => a - b);
+              max4pt = Math.max(max4pt, sums[2] - sums[1]);
+            }
+          }
+        }
+      }
+      return { max4pt, maxUltra };
+    }
+
+    // ---- Exact Neighbor-Joining (Saitou & Nei) with full step snapshots ----
+    function runNJ(names, origD) {
+      let active = names.map((nm, idx) => ({ id: idx, label: nm, isLeaf: true }));
+      let D = origD.map(row => row.slice());
+      const adj = new Map(); // id -> [{to, len}]
+      const nodeLabel = new Map();
+      active.forEach(a => { adj.set(a.id, []); nodeLabel.set(a.id, a.label); });
+
+      let nextId = names.length;
+      const steps = [];
+
+      while (active.length > 2) {
+        const n = active.length;
+        const R = active.map((_, i) => D[i].reduce((s, v) => s + v, 0));
+        const Q = Array.from({ length: n }, () => Array(n).fill(0));
+        let bestI = 0, bestJ = 1, bestQ = Infinity;
+        let minDI = 0, minDJ = 1, minD = Infinity;
+
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            const q = (n - 2) * D[i][j] - R[i] - R[j];
+            Q[i][j] = Q[j][i] = q;
+            if (q < bestQ - 1e-9) { bestQ = q; bestI = i; bestJ = j; }
+            if (D[i][j] < minD - 1e-9) { minD = D[i][j]; minDI = i; minDJ = j; }
+          }
+        }
+
+        const dij = D[bestI][bestJ];
+        const lenI = 0.5 * dij + (R[bestI] - R[bestJ]) / (2 * (n - 2));
+        const lenJ = dij - lenI;
+        const uId = nextId++;
+        const uLbl = `u${uId - names.length + 1}`;
+        adj.set(uId, []);
+        nodeLabel.set(uId, uLbl);
+
+        const nodeI = active[bestI], nodeJ = active[bestJ];
+        adj.get(uId).push({ to: nodeI.id, len: Math.max(0, lenI) });
+        adj.get(nodeI.id).push({ to: uId, len: Math.max(0, lenI) });
+        adj.get(uId).push({ to: nodeJ.id, len: Math.max(0, lenJ) });
+        adj.get(nodeJ.id).push({ to: uId, len: Math.max(0, lenJ) });
+
+        // Compute reduced distances
+        const rem = [];
+        for (let k = 0; k < n; k++) if (k !== bestI && k !== bestJ) rem.push(k);
+        const newUdist = rem.map(k => 0.5 * (D[bestI][k] + D[bestJ][k] - dij));
+
+        steps.push({
+          n,
+          labels: active.map(a => a.label),
+          D: D.map(r => r.slice()),
+          R: R.slice(),
+          Q: Q.map(r => r.slice()),
+          bestI, bestJ, bestQ,
+          minDI, minDJ, minD,
+          uLbl, lenI, lenJ,
+          remLabels: rem.map(k => active[k].label),
+          newUdist: newUdist.slice()
+        });
+
+        const nextActive = rem.map(k => active[k]);
+        nextActive.push({ id: uId, label: uLbl, isLeaf: false });
+        const m = nextActive.length;
+        const nextD = Array.from({ length: m }, () => Array(m).fill(0));
+        for (let a = 0; a < rem.length; a++) {
+          for (let b = a + 1; b < rem.length; b++) {
+            nextD[a][b] = nextD[b][a] = D[rem[a]][rem[b]];
+          }
+          nextD[a][m - 1] = nextD[m - 1][a] = newUdist[a];
+        }
+        active = nextActive;
+        D = nextD;
+      }
+
+      // Connect final 2 nodes
+      const lastLen = Math.max(0, D[0][1]);
+      adj.get(active[0].id).push({ to: active[1].id, len: lastLen });
+      adj.get(active[1].id).push({ to: active[0].id, len: lastLen });
+
+      return { steps, adj, nodeLabel, names };
+    }
+
+    // Root unrooted adjacency tree on the edge incident to outgroupLeafId
+    function rootOnOutgroup(adj, nodeLabel, outgroupId) {
+      const edges = adj.get(outgroupId);
+      const neighbor = edges[0].to;
+      const edgeLen = edges[0].len;
+
+      function buildSub(u, parent) {
+        const children = [];
+        for (const e of adj.get(u)) {
+          if (e.to === parent) continue;
+          const ch = buildSub(e.to, u);
+          ch.branchLen = e.len;
+          children.push(ch);
+        }
+        return { label: nodeLabel.get(u), isLeaf: children.length === 0, children, branchLen: 0 };
+      }
+
+      const outSub = { label: nodeLabel.get(outgroupId), isLeaf: true, children: [], branchLen: edgeLen / 2 };
+      const inSub = buildSub(neighbor, outgroupId);
+      inSub.branchLen = edgeLen / 2;
+      return { label: 'root', isLeaf: false, children: [inSub, outSub], branchLen: 0 };
+    }
+
+    // ---- Exact UPGMA ----
+    function runUPGMA(names, origD) {
+      let clusters = names.map((nm, i) => ({
+        label: nm, isLeaf: true, children: [], size: 1, height: 0, branchLen: 0, members: [i]
+      }));
+      let D = origD.map(r => r.slice());
+
+      while (clusters.length > 1) {
+        const n = clusters.length;
+        let bi = 0, bj = 1, best = Infinity;
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            if (D[i][j] < best - 1e-9) { best = D[i][j]; bi = i; bj = j; }
+          }
+        }
+        const ci = clusters[bi], cj = clusters[bj];
+        const h = best / 2;
+        ci.branchLen = Math.max(0, h - ci.height);
+        cj.branchLen = Math.max(0, h - cj.height);
+        const merged = {
+          label: `(${ci.label},${cj.label})`,
+          isLeaf: false,
+          children: [ci, cj],
+          size: ci.size + cj.size,
+          height: h,
+          branchLen: 0,
+          members: [...ci.members, ...cj.members]
+        };
+
+        const rem = [];
+        for (let k = 0; k < n; k++) if (k !== bi && k !== bj) rem.push(k);
+        const nextClusters = rem.map(k => clusters[k]);
+        nextClusters.push(merged);
+        const m = nextClusters.length;
+        const nextD = Array.from({ length: m }, () => Array(m).fill(0));
+        for (let a = 0; a < rem.length; a++) {
+          for (let b = a + 1; b < rem.length; b++) {
+            nextD[a][b] = nextD[b][a] = D[rem[a]][rem[b]];
+          }
+          const avg = (D[bi][rem[a]] * ci.size + D[bj][rem[a]] * cj.size) / (ci.size + cj.size);
+          nextD[a][m - 1] = nextD[m - 1][a] = avg;
+        }
+        clusters = nextClusters;
+        D = nextD;
+      }
+      return clusters[0];
+    }
+
+    // Compare unrooted bipartitions (splits) between two trees
+    function getUnrootedSplits(root, allLeaves) {
+      const splits = new Set();
+      const total = allLeaves.length;
+      function collect(node) {
+        if (node.isLeaf) return [node.label];
+        let ls = [];
+        for (const ch of node.children) ls = ls.concat(collect(ch));
+        if (ls.length >= 2 && ls.length <= total - 2) {
+          const s1 = ls.slice().sort().join(',');
+          const comp = allLeaves.filter(x => !ls.includes(x)).sort().join(',');
+          splits.add(s1 < comp ? s1 : comp);
+        }
+        return ls;
+      }
+      collect(root);
+      return splits;
+    }
+
+    // ---- SVG Phylogram Renderer ----
+    function renderTreeSVG(svgEl, root, strokeColor) {
+      const W = 540, H = 195;
+      const padL = 22, padR = 96, padT = 18, padB = 18;
+
+      const leaves = [];
+      function assignDepth(node, curX) {
+        node._x = curX;
+        if (node.isLeaf) { leaves.push(node); return; }
+        node.children.forEach(c => assignDepth(c, curX + Math.max(0.05, c.branchLen)));
+      }
+      assignDepth(root, 0);
+
+      const maxX = Math.max(1e-6, ...leaves.map(l => l._x));
+      const scaleX = (W - padL - padR) / maxX;
+      const stepY = leaves.length > 1 ? (H - padT - padB) / (leaves.length - 1) : 0;
+      leaves.forEach((l, idx) => { l._y = padT + idx * stepY; });
+
+      function assignY(node) {
+        if (node.isLeaf) return node._y;
+        const ys = node.children.map(assignY);
+        node._y = (Math.min(...ys) + Math.max(...ys)) / 2;
+        return node._y;
+      }
+      assignY(root);
+
+      let parts = [];
+      function drawNode(node) {
+        const px = padL + node._x * scaleX;
+        const py = node._y;
+        if (!node.isLeaf && node.children.length) {
+          const ys = node.children.map(c => c._y);
+          parts.push(`<line x1="${px.toFixed(1)}" y1="${Math.min(...ys).toFixed(1)}" x2="${px.toFixed(1)}" y2="${Math.max(...ys).toFixed(1)}" stroke="${strokeColor}" stroke-width="2.4" stroke-linecap="round"/>`);
+          for (const ch of node.children) {
+            const cx = padL + ch._x * scaleX;
+            const cy = ch._y;
+            parts.push(`<line x1="${px.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${cy.toFixed(1)}" stroke="${strokeColor}" stroke-width="2.4" stroke-linecap="round"/>`);
+            const midX = (px + cx) / 2;
+            parts.push(`<text x="${midX.toFixed(1)}" y="${(cy - 4).toFixed(1)}" text-anchor="middle" font-size="10.5" font-family="ui-monospace,monospace" fill="var(--muted)">${ch.branchLen.toFixed(2)}</text>`);
+            drawNode(ch);
+          }
+        }
+        if (node.isLeaf) {
+          parts.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="4.2" fill="${strokeColor}" stroke="var(--surface2)" stroke-width="1.5"/>`);
+          parts.push(`<text x="${(px + 9).toFixed(1)}" y="${(py + 4).toFixed(1)}" font-size="12.5" font-weight="700" fill="var(--text)">${node.label}</text>`);
+        }
+      }
+      drawNode(root);
+      svgEl.innerHTML = parts.join('');
+    }
+
+    // ---- App State ----
+    let baseNames = [];
+    let baseD = [];
+    let curStep = 0;
+
+    function loadPreset(key) {
+      const p = PRESETS[key];
+      baseNames = p.names.slice();
+      baseD = p.D.map(r => r.slice());
+      curStep = 0;
+      const ogSel = document.getElementById('outgroup-sel');
+      ogSel.innerHTML = baseNames.map((nm, i) => `<option value="${i}" ${nm === p.outgroup ? 'selected' : ''}>${nm}</option>`).join('');
+      document.getElementById('rng-noise').value = '0';
+      document.getElementById('lbl-noise').textContent = '0.00';
+      renderAll();
+    }
+
+    function getWorkingD() {
+      const sigma = parseFloat(document.getElementById('rng-noise').value) || 0;
+      const n = baseD.length;
+      const D = Array.from({ length: n }, () => Array(n).fill(0));
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const val = Math.max(0.5, baseD[i][j] + sigma * NOISE_GRID[i % 5][j % 5]);
+          D[i][j] = D[j][i] = Math.round(val * 100) / 100;
+        }
+      }
+      return D;
+    }
+
+    function renderAll() {
+      const D = getWorkingD();
+      const diag = metricDiagnostics(D);
+      const nj = runNJ(baseNames, D);
+      const upgmaRoot = runUPGMA(baseNames, D);
+      const ogIdx = parseInt(document.getElementById('outgroup-sel').value, 10) || 0;
+      const njRoot = rootOnOutgroup(nj.adj, nj.nodeLabel, ogIdx);
+
+      if (curStep >= nj.steps.length) curStep = nj.steps.length - 1;
+      if (curStep < 0) curStep = 0;
+      const st = nj.steps[curStep];
+
+      // Compare topologies
+      const njSplits = getUnrootedSplits(njRoot, baseNames);
+      const upSplits = getUnrootedSplits(upgmaRoot, baseNames);
+      const sameTopo = njSplits.size === upSplits.size && [...njSplits].every(s => upSplits.has(s));
+
+      // Diagnostics bar
+      const p4Cls = diag.max4pt < 1e-6 ? 'pill-good' : 'pill-warn';
+      const puCls = diag.maxUltra < 1e-6 ? 'pill-good' : 'pill-warn';
+      const tpCls = sameTopo ? 'pill-good' : 'pill-bad';
+      document.getElementById('diag-bar').innerHTML =
+        `<span class="pill ${p4Cls}">4-Point Deviation: ${diag.max4pt.toFixed(2)} ${diag.max4pt < 1e-6 ? '(Exact Additive ✓)' : '(Noisy)'}</span>` +
+        `<span class="pill ${puCls}">Ultrametric Deviation: ${diag.maxUltra.toFixed(2)} ${diag.maxUltra < 1e-6 ? '(Strict Clock ✓)' : '(Unequal Rates!)'}</span>` +
+        `<span class="pill ${tpCls}">${sameTopo ? 'Topology: NJ = UPGMA ✓' : 'Topology Mismatch: UPGMA FAILS ✗'}</span>`;
+
+      // Distance Table D
+      document.getElementById('dmat-title').textContent = `Step ${curStep + 1} / ${nj.steps.length} (n = ${st.n}): Distance Matrix D & Row Sums Rᵢ`;
+      const editable = curStep === 0 && (parseFloat(document.getElementById('rng-noise').value) || 0) === 0;
+      let dHtml = '<thead><tr><th>Taxon</th>' + st.labels.map(l => `<th>${l}</th>`).join('') + '<th>Rᵢ</th></tr></thead><tbody>';
+      for (let i = 0; i < st.n; i++) {
+        dHtml += `<tr><th>${st.labels[i]}</th>`;
+        for (let j = 0; j < st.n; j++) {
+          const isMinD = (i === st.minDI && j === st.minDJ) || (i === st.minDJ && j === st.minDI);
+          const isNJ = (i === st.bestI && j === st.bestJ) || (i === st.bestJ && j === st.bestI);
+          const cls = isMinD && !isNJ ? 'upgma-pick' : (isNJ ? 'nj-pick' : '');
+          if (editable && i !== j) {
+            dHtml += `<td class="${cls}"><input type="number" step="1" min="0.5" class="d-edit" data-i="${i}" data-j="${j}" value="${st.D[i][j]}"></td>`;
+          } else {
+            dHtml += `<td class="${cls}">${i === j ? '0' : st.D[i][j].toFixed(1)}</td>`;
+          }
+        }
+        dHtml += `<td><strong>${st.R[i].toFixed(1)}</strong></td></tr>`;
+      }
+      dHtml += '</tbody>';
+      document.getElementById('d-table').innerHTML = dHtml;
+
+      // Q-Matrix Table
+      let qHtml = '<thead><tr><th>Taxon</th>' + st.labels.map(l => `<th>${l}</th>`).join('') + '</tr></thead><tbody>';
+      for (let i = 0; i < st.n; i++) {
+        qHtml += `<tr><th>${st.labels[i]}</th>`;
+        for (let j = 0; j < st.n; j++) {
+          const isNJ = (i === st.bestI && j === st.bestJ) || (i === st.bestJ && j === st.bestI);
+          qHtml += `<td class="${isNJ ? 'nj-pick' : ''}">${i === j ? '—' : st.Q[i][j].toFixed(1)}</td>`;
+        }
+        qHtml += '</tr>';
+      }
+      qHtml += '</tbody>';
+      document.getElementById('q-table').innerHTML = qHtml;
+
+      // Step Log
+      const li = st.labels[st.bestI], lj = st.labels[st.bestJ];
+      const ui = st.labels[st.minDI], uj = st.labels[st.minDJ];
+      const disagreeNote = (st.bestI !== st.minDI || st.bestJ !== st.minDJ)
+        ? `\n⚠ UPGMA would greedily join (${ui}, ${uj}) with min D = ${st.minD.toFixed(1)} instead!`
+        : `\n✓ min Q and min D agree on (${li}, ${lj}).`;
+      const newDstr = st.remLabels.map((rl, k) => `d(${st.uLbl},${rl})=${st.newUdist[k].toFixed(2)}`).join(', ');
+      document.getElementById('step-log').textContent =
+        `NJ picks (${li}, ${lj}): min Q = ${st.bestQ.toFixed(2)}  (d = ${st.D[st.bestI][st.bestJ].toFixed(2)})\n` +
+        `Branch lengths → ${st.uLbl}:  δ(${li},${st.uLbl}) = ${st.lenI.toFixed(2)},  δ(${lj},${st.uLbl}) = ${st.lenJ.toFixed(2)}\n` +
+        `Reduced distances: ${newDstr}` + disagreeNote;
+
+      // Render Trees
+      const styles = getComputedStyle(document.documentElement);
+      renderTreeSVG(document.getElementById('svg-nj'), njRoot, styles.getPropertyValue('--good').trim() || '#66bb6a');
+      renderTreeSVG(document.getElementById('svg-upgma'), upgmaRoot, sameTopo ? (styles.getPropertyValue('--accent').trim() || '#64b5f6') : (styles.getPropertyValue('--bad').trim() || '#ef5350'));
+
+      document.getElementById('nj-status').textContent = `Rooted on ${baseNames[ogIdx]} · Variable rates allowed`;
+      document.getElementById('upgma-status').textContent = sameTopo ? 'Matches NJ topology' : 'Wrong topology due to unequal rates!';
+    }
+
+    // ---- Events ----
+    document.getElementById('preset-sel').addEventListener('change', (e) => loadPreset(e.target.value));
+    document.getElementById('outgroup-sel').addEventListener('change', renderAll);
+    document.getElementById('rng-noise').addEventListener('input', (e) => {
+      document.getElementById('lbl-noise').textContent = parseFloat(e.target.value).toFixed(2);
+      curStep = 0;
+      renderAll();
+    });
+    document.getElementById('btn-prev').addEventListener('click', () => { curStep = Math.max(0, curStep - 1); renderAll(); });
+    document.getElementById('btn-next').addEventListener('click', () => { curStep++; renderAll(); });
+    document.getElementById('btn-reset').addEventListener('click', () => { curStep = 0; renderAll(); });
+    document.getElementById('d-table').addEventListener('change', (e) => {
+      const inp = e.target.closest('input.d-edit');
+      if (!inp) return;
+      const i = parseInt(inp.dataset.i, 10), j = parseInt(inp.dataset.j, 10);
+      const val = Math.max(0.5, parseFloat(inp.value) || 1);
+      baseD[i][j] = baseD[j][i] = val;
+      renderAll();
+    });
+
+    window.__njLab = { runNJ, runUPGMA, metricDiagnostics };
+    loadPreset('trap');
+  </script>
+</body>
+</html>
+

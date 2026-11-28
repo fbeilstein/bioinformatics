@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Pairwise DP &amp; Gotoh 3-Matrix Alignment Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228;
+      --surface-dark: #2a2e37;
+      --surface2-dark: #181a20;
+      --border-dark: #3d4350;
+      --text-dark: #e8ecf2;
+      --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6;
+      --good-dark: #66bb6a;
+      --warn-dark: #ffb74d;
+      --bad-dark: #ef5350;
+      --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb;
+      --surface-light: #ffffff;
+      --surface2-light: #eef2f7;
+      --border-light: #d4dce6;
+      --text-light: #1a202c;
+      --muted-light: #5a6578;
+      --accent-light: #1565c0;
+      --good-light: #2e7d32;
+      --warn-light: #d97706;
+      --bad-light: #c62828;
+      --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+      --purple: var(--purple-dark);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light);
+        --surface: var(--surface-light);
+        --surface2: var(--surface2-light);
+        --border: var(--border-light);
+        --text: var(--text-light);
+        --muted: var(--muted-light);
+        --accent: var(--accent-light);
+        --good: var(--good-light);
+        --warn: var(--warn-light);
+        --bad: var(--bad-light);
+        --purple: var(--purple-light);
+      }
+    }
+
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light);
+      --surface: var(--surface-light);
+      --surface2: var(--surface2-light);
+      --border: var(--border-light);
+      --text: var(--text-light);
+      --muted: var(--muted-light);
+      --accent: var(--accent-light);
+      --good: var(--good-light);
+      --warn: var(--warn-light);
+      --bad: var(--bad-light);
+      --purple: var(--purple-light);
+    }
+
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark);
+      --surface: var(--surface-dark);
+      --surface2: var(--surface2-dark);
+      --border: var(--border-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --good: var(--good-dark);
+      --warn: var(--warn-dark);
+      --bad: var(--bad-dark);
+      --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      accent-color: var(--accent);
+    }
+
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+    }
+
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    select, input[type="text"], input[type="number"] {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 12.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    input[type="text"].seq-inp {
+      width: 150px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+    }
+
+    input[type="number"].num-inp {
+      width: 52px;
+      text-align: center;
+    }
+
+    .btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.active, .btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    :root.dark-theme .btn.active, :root.dark-theme .btn.primary { color: #0f172a; }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.38fr) minmax(300px, 0.92fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .panel-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .seg-group {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .seg-group button {
+      border: none;
+      border-right: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      padding: 3px 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .seg-group button:last-child { border-right: none; }
+    .seg-group button[aria-pressed="true"] {
+      background: var(--accent);
+      color: #fff;
+    }
+    :root.dark-theme .seg-group button[aria-pressed="true"] { color: #0f172a; }
+
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: 430px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface2);
+    }
+
+    table.dp-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+      text-align: center;
+    }
+
+    table.dp-table thead th {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: var(--surface);
+      color: var(--text);
+      padding: 4px 5px;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      font-weight: 700;
+      min-width: 34px;
+    }
+
+    table.dp-table tbody th {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      background: var(--surface);
+      color: var(--text);
+      padding: 4px 6px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      min-width: 30px;
+    }
+
+    table.dp-table thead th:first-child {
+      inset-inline-start: 0;
+      z-index: 3;
+    }
+
+    table.dp-table td {
+      position: relative;
+      padding: 3px 4px;
+      min-width: 34px;
+      height: 29px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      transition: outline-color 0.08s;
+    }
+
+    table.dp-table td.unfilled {
+      opacity: 0.22;
+    }
+
+    table.dp-table td.on-path {
+      box-shadow: inset 0 0 0 2px var(--warn);
+      font-weight: 700;
+    }
+    table.dp-table td.on-alt-path {
+      box-shadow: inset 0 0 0 2px var(--purple);
+    }
+    table.dp-table td.path-start {
+      box-shadow: inset 0 0 0 2.5px var(--bad);
+      font-weight: 800;
+    }
+    table.dp-table td.selected-cell {
+      outline: 2.5px solid var(--accent);
+      outline-offset: -2px;
+      z-index: 1;
+    }
+    table.dp-table td.pred-cell {
+      outline: 2px dashed var(--good);
+      outline-offset: -2px;
+    }
+
+    .cell-ptr {
+      position: absolute;
+      top: 0;
+      left: 1px;
+      font-size: 8.5px;
+      line-height: 1;
+      opacity: 0.78;
+    }
+
+    .aln-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.45;
+      margin-bottom: 8px;
+    }
+
+    .aln-match { color: var(--good); font-weight: 700; }
+    .aln-gap { color: var(--bad); }
+    .aln-mm { color: var(--warn); }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .kpi {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .kpi-lbl { font-size: 11px; color: var(--muted); }
+    .kpi-val { font-size: 15px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--text); }
+
+    .inspector {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .inspector-title {
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .cand-list {
+      margin: 4px 0 0;
+      padding: 0;
+      list-style: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+    }
+    .cand-list li {
+      padding: 2px 5px;
+      border-radius: 4px;
+      margin-bottom: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .cand-list li.winner {
+      background: rgba(102, 187, 106, 0.22);
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      vertical-align: -1px;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <label class="field">Preset:
+      <select id="preset-sel" aria-label="Sequence preset">
+        <option value="blosum">Biopython Worked (BLOSUM62, score=3)</option>
+        <option value="utr">mRNA + Variable UTRs (Global vs Local)</option>
+        <option value="slippage">3-bp Slippage (Linear vs Affine Split)</option>
+        <option value="ties">Co-Optimal Tie Explosion (Repeats)</option>
+      </select>
+    </label>
+    <label class="field">Seq A: <input type="text" id="seq-a" class="seq-inp" maxlength="16" value="HEAGAWGHEE"></label>
+    <label class="field">Seq B: <input type="text" id="seq-b" class="seq-inp" maxlength="16" value="PAWHEAE"></label>
+    <label class="field">Mode:
+      <select id="mode-sel" aria-label="Alignment mode">
+        <option value="global">Global (NW / Gotoh)</option>
+        <option value="local">Local (SW / Gotoh)</option>
+        <option value="semiglobal">Semi-Global (Free Ends)</option>
+      </select>
+    </label>
+    <label class="field">Gaps:
+      <select id="gap-mode-sel" aria-label="Gap model">
+        <option value="affine">Affine (Gotoh M/I/D)</option>
+        <option value="linear">Linear (1-Matrix)</option>
+      </select>
+    </label>
+    <label class="field">Scoring:
+      <select id="score-mode-sel" aria-label="Substitution scoring">
+        <option value="blosum62">BLOSUM62 (Protein)</option>
+        <option value="dna">Match / Mismatch (DNA)</option>
+      </select>
+    </label>
+    <span id="dna-params" style="display:none; gap:8px; align-items:center;">
+      <label class="field">Match: <input type="number" id="match-inp" class="num-inp" value="2" min="1" max="20"></label>
+      <label class="field">MM: <input type="number" id="mm-inp" class="num-inp" value="-2" min="-20" max="0"></label>
+    </span>
+    <label class="field">Open o: <input type="number" id="open-inp" class="num-inp" value="-10" min="-30" max="-1"></label>
+    <label class="field" id="ext-wrap">Extend e: <input type="number" id="ext-inp" class="num-inp" value="-1" min="-20" max="0"></label>
+  </div>
+
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title" id="matrix-heading">DP Matrix — Combined max(M, I, D)</span>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <div class="seg-group" id="layer-seg" role="group" aria-label="Gotoh matrix layer">
+            <button type="button" data-layer="C" aria-pressed="true">Max</button>
+            <button type="button" data-layer="M" aria-pressed="false">M</button>
+            <button type="button" data-layer="I" aria-pressed="false">I (gap B)</button>
+            <button type="button" data-layer="D" aria-pressed="false">D (gap A)</button>
+          </div>
+          <button type="button" class="btn" id="btn-step">Step</button>
+          <button type="button" class="btn" id="btn-play">Play</button>
+          <button type="button" class="btn primary" id="btn-fill">Fill All</button>
+          <label class="field" style="cursor:pointer;">
+            <input type="checkbox" id="chk-ties" checked> Show all ties
+          </label>
+        </div>
+      </div>
+
+      <div tabindex="0" role="region" aria-label="Dynamic programming score matrix" class="table-wrapper" id="table-wrap">
+        <table class="dp-table" id="dp-table"></table>
+      </div>
+
+      <div class="legend">
+        <span><span class="swatch" style="border:2px solid var(--bad);"></span>Traceback start (best score)</span>
+        <span><span class="swatch" style="border:2px solid var(--warn);"></span>Optimal path</span>
+        <span><span class="swatch" style="border:2px solid var(--purple);"></span>Co-optimal tied branch</span>
+        <span><span class="swatch" style="border:2px dashed var(--good);"></span>Winning predecessor</span>
+        <span>Biopython gap(L) = o + (L−1)e</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Optimal Alignment &amp; Cell Recurrence Inspector</span>
+      </div>
+
+      <div class="aln-box" id="aln-box"></div>
+
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-lbl">Optimal Score</div>
+          <div class="kpi-val" id="kpi-score">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">Co-Optimal Paths</div>
+          <div class="kpi-val" id="kpi-paths">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">Identity (Gap-Inclusive)</div>
+          <div class="kpi-val" id="kpi-id-inc">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">Identity (Gaps Excluded)</div>
+          <div class="kpi-val" id="kpi-id-exc">—</div>
+        </div>
+      </div>
+
+      <div class="inspector" id="cell-inspector">
+        <div class="inspector-title">Click or hover any matrix cell (i, j) to inspect recurrence</div>
+        <div style="color:var(--muted);">Shows exact candidate transitions for the active matrix layer (M, I, D, or linear H).</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Theme Sync with slides.js ----
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    // Exact Biopython BLOSUM62 (20 standard amino acids)
+    const AA20 = "ARNDCQEGHILKMFPSTWYV";
+    const BLOSUM62_MAT = [
+      [4,-1,-2,-2,0,-1,-1,0,-2,-1,-1,-1,-1,-2,-1,1,0,-3,-2,0],
+      [-1,5,0,-2,-3,1,0,-2,0,-3,-2,2,-1,-3,-2,-1,-1,-3,-2,-3],
+      [-2,0,6,1,-3,0,0,0,1,-3,-3,0,-2,-3,-2,1,0,-4,-2,-3],
+      [-2,-2,1,6,-3,0,2,-1,-1,-3,-4,-1,-3,-3,-1,0,-1,-4,-3,-3],
+      [0,-3,-3,-3,9,-3,-4,-3,-3,-1,-1,-3,-1,-2,-3,-1,-1,-2,-2,-1],
+      [-1,1,0,0,-3,5,2,-2,0,-3,-2,1,0,-3,-1,0,-1,-2,-1,-2],
+      [-1,0,0,2,-4,2,5,-2,0,-3,-3,1,-2,-3,-1,0,-1,-3,-2,-2],
+      [0,-2,0,-1,-3,-2,-2,6,-2,-4,-4,-2,-3,-3,-2,0,-2,-2,-3,-3],
+      [-2,0,1,-1,-3,0,0,-2,8,-3,-3,-1,-2,-1,-2,-1,-2,-2,2,-3],
+      [-1,-3,-3,-3,-1,-3,-3,-4,-3,4,2,-3,1,0,-3,-2,-1,-3,-1,3],
+      [-1,-2,-3,-4,-1,-2,-3,-4,-3,2,4,-2,2,0,-3,-2,-1,-2,-1,1],
+      [-1,2,0,-1,-3,1,1,-2,-1,-3,-2,5,-1,-3,-1,0,-1,-3,-2,-2],
+      [-1,-1,-2,-3,-1,0,-2,-3,-2,1,2,-1,5,0,-2,-1,-1,-1,-1,1],
+      [-2,-3,-3,-3,-2,-3,-3,-3,-1,0,0,-3,0,6,-4,-2,-2,1,3,-1],
+      [-1,-2,-2,-1,-3,-1,-1,-2,-2,-3,-3,-1,-2,-4,7,-1,-1,-4,-3,-2],
+      [1,-1,1,0,-1,0,0,0,-1,-2,-2,0,-1,-2,-1,4,1,-3,-2,-2],
+      [0,-1,0,-1,-1,-1,-1,-2,-2,-1,-1,-1,-1,-2,-1,1,5,-2,-2,0],
+      [-3,-3,-4,-4,-2,-2,-3,-2,-2,-3,-2,-3,-1,1,-4,-3,-2,11,2,-3],
+      [-2,-2,-2,-3,-2,-1,-2,-3,2,-1,-1,-2,-1,3,-3,-2,-2,2,7,-1],
+      [0,-3,-3,-3,-1,-2,-2,-3,-3,3,1,-2,1,-1,-2,-2,0,-3,-1,4]
+    ];
+
+    function subScore(a, b, cfg) {
+      if (cfg.scoreMode === 'blosum62') {
+        const ia = AA20.indexOf(a), ib = AA20.indexOf(b);
+        if (ia >= 0 && ib >= 0) return BLOSUM62_MAT[ia][ib];
+        return a === b ? 4 : -4;
+      }
+      return a === b ? cfg.match : cfg.mismatch;
+    }
+
+    const NEG_INF = -1e9;
+    const CAP_PATHS = 1e9;
+
+    // Exact Pairwise DP supporting Global, Local, Semi-Global & Linear or Affine Gotoh (Biopython gap(L) = o + (L-1)e)
+    function computeDP(seqA, seqB, cfg) {
+      const n = seqA.length, m = seqB.length;
+      const isAffine = cfg.gapMode === 'affine';
+      const o = cfg.open;
+      const e = isAffine ? cfg.extend : cfg.open;
+
+      const makeGrid = (fill) => Array.from({ length: n + 1 }, () => Array(m + 1).fill(fill));
+      const M = makeGrid(NEG_INF);
+      const I = makeGrid(NEG_INF); // gap in B (vertical step i-1 -> i)
+      const D = makeGrid(NEG_INF); // gap in A (horizontal step j-1 -> j)
+
+      // Store candidate lists per state for exact inspection and tie counting
+      const makeMeta = () => Array.from({ length: n + 1 }, () => Array.from({ length: m + 1 }, () => []));
+      const metaM = makeMeta(), metaI = makeMeta(), metaD = makeMeta();
+
+      // Initialization
+      M[0][0] = 0;
+      for (let i = 1; i <= n; i++) {
+        if (cfg.mode === 'global') {
+          I[i][0] = o + (i - 1) * e;
+          metaI[i][0] = [{ label: i === 1 ? `M[0,0] + o (${o})` : `I[${i-1},0] + e (${e})`, val: I[i][0], from: [i === 1 ? 'M' : 'I', i - 1, 0], win: true }];
+          if (!isAffine) { M[i][0] = I[i][0]; metaM[i][0] = metaI[i][0]; }
+        } else if (cfg.mode === 'semiglobal') {
+          I[i][0] = 0;
+          metaI[i][0] = [{ label: 'Free leading end gap (0)', val: 0, from: [i === 1 ? 'M' : 'I', i - 1, 0], win: true }];
+          if (!isAffine) { M[i][0] = 0; metaM[i][0] = metaI[i][0]; }
+        } else {
+          M[i][0] = 0;
+          metaM[i][0] = [{ label: 'Local border (0)', val: 0, from: null, win: true }];
+        }
+      }
+      for (let j = 1; j <= m; j++) {
+        if (cfg.mode === 'global') {
+          D[0][j] = o + (j - 1) * e;
+          metaD[0][j] = [{ label: j === 1 ? `M[0,0] + o (${o})` : `D[0,${j-1}] + e (${e})`, val: D[0][j], from: [j === 1 ? 'M' : 'D', 0, j - 1], win: true }];
+          if (!isAffine) { M[0][j] = D[0][j]; metaM[0][j] = metaD[0][j]; }
+        } else if (cfg.mode === 'semiglobal') {
+          D[0][j] = 0;
+          metaD[0][j] = [{ label: 'Free leading end gap (0)', val: 0, from: [j === 1 ? 'M' : 'D', 0, j - 1], win: true }];
+          if (!isAffine) { M[0][j] = 0; metaM[0][j] = metaD[0][j]; }
+        } else {
+          M[0][j] = 0;
+          metaM[0][j] = [{ label: 'Local border (0)', val: 0, from: null, win: true }];
+        }
+      }
+
+      // Fill interior
+      for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+          const s = subScore(seqA[i - 1], seqB[j - 1], cfg);
+          if (!isAffine) {
+            const cands = [
+              { label: `↖ H[${i-1},${j-1}] + s(${seqA[i-1]},${seqB[j-1]}) = ${M[i-1][j-1]} + (${s})`, val: M[i-1][j-1] + s, from: ['M', i - 1, j - 1] },
+              { label: `↑ H[${i-1},${j}] + g = ${M[i-1][j]} + (${o})`, val: M[i-1][j] + o, from: ['M', i - 1, j] },
+              { label: `← H[${i},${j-1}] + g = ${M[i][j-1]} + (${o})`, val: M[i][j-1] + o, from: ['M', i, j - 1] }
+            ];
+            if (cfg.mode === 'local') cands.push({ label: '0 (local reset)', val: 0, from: null });
+            const best = Math.max(...cands.map(c => c.val));
+            M[i][j] = best;
+            cands.forEach(c => { c.win = (c.val === best); });
+            metaM[i][j] = cands;
+          } else {
+            // Gotoh 3-state (Biopython convention: open = o, extend = e)
+            const cI = [];
+            if (M[i - 1][j] > NEG_INF / 2) cI.push({ label: `↑ M[${i-1},${j}] + o = ${M[i-1][j]} + (${o})`, val: M[i-1][j] + o, from: ['M', i - 1, j] });
+            if (I[i - 1][j] > NEG_INF / 2) cI.push({ label: `↑ I[${i-1},${j}] + e = ${I[i-1][j]} + (${e})`, val: I[i-1][j] + e, from: ['I', i - 1, j] });
+            if (D[i - 1][j] > NEG_INF / 2) cI.push({ label: `↑ D[${i-1},${j}] + o = ${D[i-1][j]} + (${o})`, val: D[i-1][j] + o, from: ['D', i - 1, j] });
+            const bestI = cI.length ? Math.max(...cI.map(c => c.val)) : NEG_INF;
+            I[i][j] = bestI;
+            cI.forEach(c => { c.win = (c.val === bestI); });
+            metaI[i][j] = cI;
+
+            const cD = [];
+            if (M[i][j - 1] > NEG_INF / 2) cD.push({ label: `← M[${i},${j-1}] + o = ${M[i][j-1]} + (${o})`, val: M[i][j-1] + o, from: ['M', i, j - 1] });
+            if (D[i][j - 1] > NEG_INF / 2) cD.push({ label: `← D[${i},${j-1}] + e = ${D[i][j-1]} + (${e})`, val: D[i][j-1] + e, from: ['D', i, j - 1] });
+            if (I[i][j - 1] > NEG_INF / 2) cD.push({ label: `← I[${i},${j-1}] + o = ${I[i][j-1]} + (${o})`, val: I[i][j-1] + o, from: ['I', i, j - 1] });
+            const bestD = cD.length ? Math.max(...cD.map(c => c.val)) : NEG_INF;
+            D[i][j] = bestD;
+            cD.forEach(c => { c.win = (c.val === bestD); });
+            metaD[i][j] = cD;
+
+            const cM = [];
+            if (M[i - 1][j - 1] > NEG_INF / 2) cM.push({ label: `↖ M[${i-1},${j-1}] + s(${seqA[i-1]},${seqB[j-1]}) = ${M[i-1][j-1]} + (${s})`, val: M[i-1][j-1] + s, from: ['M', i - 1, j - 1] });
+            if (I[i - 1][j - 1] > NEG_INF / 2) cM.push({ label: `↖ I[${i-1},${j-1}] + s(${seqA[i-1]},${seqB[j-1]}) = ${I[i-1][j-1]} + (${s})`, val: I[i-1][j-1] + s, from: ['I', i - 1, j - 1] });
+            if (D[i - 1][j - 1] > NEG_INF / 2) cM.push({ label: `↖ D[${i-1},${j-1}] + s(${seqA[i-1]},${seqB[j-1]}) = ${D[i-1][j-1]} + (${s})`, val: D[i-1][j-1] + s, from: ['D', i - 1, j - 1] });
+            if (cfg.mode === 'local') cM.push({ label: '0 (local reset)', val: 0, from: null });
+            const bestM = cM.length ? Math.max(...cM.map(c => c.val)) : NEG_INF;
+            M[i][j] = bestM;
+            cM.forEach(c => { c.win = (c.val === bestM); });
+            metaM[i][j] = cM;
+          }
+        }
+      }
+
+      // Combined matrix C[i][j]
+      const C = makeGrid(NEG_INF);
+      for (let i = 0; i <= n; i++) {
+        for (let j = 0; j <= m; j++) {
+          C[i][j] = isAffine ? Math.max(M[i][j], I[i][j], D[i][j]) : M[i][j];
+        }
+      }
+
+      // Find optimal start states
+      let bestScore = NEG_INF;
+      let startStates = [];
+      const addCandStart = (st, i, j, val) => {
+        if (val > bestScore) { bestScore = val; startStates = [[st, i, j]]; }
+        else if (val === bestScore) { startStates.push([st, i, j]); }
+      };
+
+      if (cfg.mode === 'global') {
+        const states = isAffine ? ['M', 'I', 'D'] : ['M'];
+        const mats = { M, I, D };
+        states.forEach(st => addCandStart(st, n, m, mats[st][n][m]));
+      } else if (cfg.mode === 'local') {
+        bestScore = 0;
+        for (let i = 0; i <= n; i++) {
+          for (let j = 0; j <= m; j++) {
+            const v = M[i][j];
+            if (v > bestScore) { bestScore = v; startStates = [['M', i, j]]; }
+            else if (v === bestScore && v > 0) { startStates.push(['M', i, j]); }
+          }
+        }
+        if (startStates.length === 0) startStates = [['M', 0, 0]];
+      } else { // semiglobal: max along row n or col m
+        const states = isAffine ? ['M', 'I', 'D'] : ['M'];
+        const mats = { M, I, D };
+        for (let j = 0; j <= m; j++) {
+          states.forEach(st => addCandStart(st, n, j, mats[st][n][j]));
+        }
+        for (let i = 0; i < n; i++) {
+          states.forEach(st => addCandStart(st, i, m, mats[st][i][m]));
+        }
+      }
+
+      // Count co-optimal paths and collect all cells on any co-optimal path
+      const metaMap = { M: metaM, I: metaI, D: metaD };
+      const valMap = { M, I, D };
+      const memoCount = new Map();
+      const allTieCells = new Set();
+
+      function isTerminal(st, i, j) {
+        if (cfg.mode === 'global') return i === 0 && j === 0;
+        if (cfg.mode === 'local') return valMap[st][i][j] === 0;
+        return i === 0 || j === 0;
+      }
+
+      function countPaths(st, i, j) {
+        const key = `${st},${i},${j}`;
+        if (memoCount.has(key)) return memoCount.get(key);
+        allTieCells.add(`${i},${j}`);
+        if (isTerminal(st, i, j)) { memoCount.set(key, 1); return 1; }
+        let total = 0;
+        const wins = metaMap[st][i][j].filter(c => c.win);
+        for (const w of wins) {
+          if (!w.from) { total += 1; continue; }
+          total += countPaths(w.from[0], w.from[1], w.from[2]);
+          if (total > CAP_PATHS) { total = CAP_PATHS + 1; break; }
+        }
+        memoCount.set(key, total);
+        return total;
+      }
+
+      let totalPaths = 0;
+      for (const [st, i, j] of startStates) {
+        totalPaths += countPaths(st, i, j);
+        if (totalPaths > CAP_PATHS) { totalPaths = CAP_PATHS + 1; break; }
+      }
+
+      // Primary traceback (deterministic priority: M > I > D)
+      const [s0, i0, j0] = startStates[0];
+      const primaryPath = [[i0, j0, s0]];
+      let alnA = [], alnB = [];
+      let curSt = s0, ci = i0, cj = j0;
+
+      // For semiglobal trailing free end gaps
+      if (cfg.mode === 'semiglobal') {
+        for (let ti = n; ti > ci; ti--) { alnA.push(seqA[ti - 1]); alnB.push('-'); }
+        for (let tj = m; tj > cj; tj--) { alnA.push('-'); alnB.push(seqB[tj - 1]); }
+      }
+
+      while (!isTerminal(curSt, ci, cj)) {
+        const wins = metaMap[curSt][ci][cj].filter(c => c.win);
+        if (!wins.length || !wins[0].from) break;
+        const [nst, ni, nj] = wins[0].from;
+        if (ni === ci - 1 && nj === cj - 1) { alnA.push(seqA[ci - 1]); alnB.push(seqB[cj - 1]); }
+        else if (ni === ci - 1 && nj === cj) { alnA.push(seqA[ci - 1]); alnB.push('-'); }
+        else { alnA.push('-'); alnB.push(seqB[cj - 1]); }
+        curSt = nst; ci = ni; cj = nj;
+        primaryPath.push([ci, cj, curSt]);
+      }
+
+      if (cfg.mode === 'semiglobal') {
+        for (let ti = ci; ti > 0; ti--) { alnA.push(seqA[ti - 1]); alnB.push('-'); }
+        for (let tj = cj; tj > 0; tj--) { alnA.push('-'); alnB.push(seqB[tj - 1]); }
+      }
+
+      alnA.reverse(); alnB.reverse();
+      const strA = alnA.join(''), strB = alnB.join('');
+      let matches = 0, comparable = 0;
+      for (let k = 0; k < strA.length; k++) {
+        if (strA[k] !== '-' && strB[k] !== '-') {
+          comparable++;
+          if (strA[k] === strB[k]) matches++;
+        }
+      }
+
+      return {
+        n, m, seqA, seqB, cfg, isAffine,
+        M, I, D, C, metaM, metaI, metaD,
+        bestScore, startCell: [i0, j0],
+        primaryPath, allTieCells, totalPaths,
+        strA, strB, matches, comparable, alnLen: strA.length
+      };
+    }
+
+    // ---- UI State & Rendering ----
+    const PRESETS = {
+      blosum:   { a: 'HEAGAWGHEE', b: 'PAWHEAE', mode: 'global', gapMode: 'affine', scoreMode: 'blosum62', match: 5, mm: -4, open: -10, ext: -1 },
+      utr:      { a: 'TTACGTAC', b: 'ACGTACGG', mode: 'local', gapMode: 'linear', scoreMode: 'dna', match: 2, mm: -2, open: -2, ext: -2 },
+      slippage: { a: 'ATGCCCAAAGGT', b: 'ATGCCAGGT', mode: 'global', gapMode: 'affine', scoreMode: 'dna', match: 2, mm: -2, open: -5, ext: -1 },
+      ties:     { a: 'ATATATAT', b: 'TATATATA', mode: 'global', gapMode: 'linear', scoreMode: 'dna', match: 2, mm: -2, open: -2, ext: -2 }
+    };
+
+    let dpState = null;
+    let activeLayer = 'C';
+    let selectedCell = null;
+    let fillStep = Infinity;
+    let playTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function readConfig() {
+      return {
+        mode: $('mode-sel').value,
+        gapMode: $('gap-mode-sel').value,
+        scoreMode: $('score-mode-sel').value,
+        match: parseInt($('match-inp').value, 10) || 2,
+        mismatch: parseInt($('mm-inp').value, 10) || -2,
+        open: parseInt($('open-inp').value, 10) || -5,
+        extend: parseInt($('ext-inp').value, 10) || -1
+      };
+    }
+
+    function syncControlsVisibility() {
+      const cfg = readConfig();
+      $('dna-params').style.display = cfg.scoreMode === 'dna' ? 'inline-flex' : 'none';
+      $('ext-wrap').style.display = cfg.gapMode === 'affine' ? 'inline-flex' : 'none';
+      $('layer-seg').style.display = cfg.gapMode === 'affine' ? 'inline-flex' : 'none';
+      if (cfg.gapMode === 'linear') activeLayer = 'M';
+    }
+
+    function getActiveMatrix(dp) {
+      if (!dp.isAffine) return dp.M;
+      if (activeLayer === 'M') return dp.M;
+      if (activeLayer === 'I') return dp.I;
+      if (activeLayer === 'D') return dp.D;
+      return dp.C;
+    }
+
+    function cellHeatColor(val, minV, maxV) {
+      if (val <= NEG_INF / 2) return 'transparent';
+      const isLight = document.documentElement.classList.contains('light-theme') ||
+        (!document.documentElement.classList.contains('dark-theme') && window.matchMedia('(prefers-color-scheme: light)').matches);
+      const t = maxV === minV ? 0.5 : (val - minV) / (maxV - minV);
+      if (isLight) {
+        if (val < 0) {
+          const r = Math.min(1, Math.abs(val) / Math.max(1, Math.abs(minV)));
+          return `rgba(220, 38, 38, ${(0.06 + 0.24 * r).toFixed(2)})`;
+        }
+        return `rgba(37, 99, 235, ${(0.05 + 0.30 * t).toFixed(2)})`;
+      } else {
+        if (val < 0) {
+          const r = Math.min(1, Math.abs(val) / Math.max(1, Math.abs(minV)));
+          return `rgba(239, 83, 80, ${(0.08 + 0.28 * r).toFixed(2)})`;
+        }
+        return `rgba(100, 181, 246, ${(0.06 + 0.34 * t).toFixed(2)})`;
+      }
+    }
+
+    function renderAll() {
+      syncControlsVisibility();
+      const seqA = ($('seq-a').value || 'ACGT').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 16) || 'A';
+      const seqB = ($('seq-b').value || 'ACGT').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 16) || 'A';
+      dpState = computeDP(seqA, seqB, readConfig());
+      const totalCells = (dpState.n + 1) * (dpState.m + 1);
+      if (fillStep > totalCells) fillStep = totalCells;
+      if (!selectedCell || selectedCell[0] > dpState.n || selectedCell[1] > dpState.m) {
+        selectedCell = dpState.startCell;
+      }
+      renderTable();
+      renderSummary();
+      renderInspector(selectedCell[0], selectedCell[1]);
+    }
+
+    function renderTable() {
+      const dp = dpState;
+      const mat = getActiveMatrix(dp);
+      const layerName = !dp.isAffine ? 'Linear H' : ({ C: 'Combined max(M, I, D)', M: 'State M (Match/Mismatch)', I: 'State I (Gap in B / Vertical)', D: 'State D (Gap in A / Horizontal)' })[activeLayer];
+      $('matrix-heading').textContent = `DP Matrix — ${layerName}`;
+
+      let minV = Infinity, maxV = -Infinity;
+      for (let i = 0; i <= dp.n; i++) {
+        for (let j = 0; j <= dp.m; j++) {
+          if (mat[i][j] > NEG_INF / 2) {
+            if (mat[i][j] < minV) minV = mat[i][j];
+            if (mat[i][j] > maxV) maxV = mat[i][j];
+          }
+        }
+      }
+      if (!isFinite(minV)) { minV = 0; maxV = 0; }
+
+      const primarySet = new Set(dp.primaryPath.map(p => `${p[0]},${p[1]}`));
+      const showTies = $('chk-ties').checked;
+      const doneFilling = fillStep >= (dp.n + 1) * (dp.m + 1);
+
+      // Compute winning predecessor cells for selectedCell
+      const predSet = new Set();
+      if (selectedCell) {
+        const [si, sj] = selectedCell;
+        const st = getInspectorState(dp, si, sj);
+        const metas = { M: dp.metaM, I: dp.metaI, D: dp.metaD }[st][si][sj] || [];
+        metas.filter(c => c.win && c.from).forEach(c => predSet.add(`${c.from[1]},${c.from[2]}`));
+      }
+
+      let html = '<thead><tr><th></th><th>–</th>';
+      for (let j = 0; j < dp.m; j++) html += `<th>${dp.seqB[j]}</th>`;
+      html += '</tr></thead><tbody>';
+
+      let cellIdx = 0;
+      for (let i = 0; i <= dp.n; i++) {
+        html += `<tr><th>${i === 0 ? '–' : dp.seqA[i - 1]}</th>`;
+        for (let j = 0; j <= dp.m; j++) {
+          const filled = cellIdx < fillStep;
+          cellIdx++;
+          const v = mat[i][j];
+          const key = `${i},${j}`;
+          const cls = [];
+          if (!filled) cls.push('unfilled');
+          if (doneFilling && i === dp.startCell[0] && j === dp.startCell[1]) cls.push('path-start');
+          else if (doneFilling && primarySet.has(key)) cls.push('on-path');
+          else if (doneFilling && showTies && dp.allTieCells.has(key)) cls.push('on-alt-path');
+          if (selectedCell && selectedCell[0] === i && selectedCell[1] === j) cls.push('selected-cell');
+          if (predSet.has(key)) cls.push('pred-cell');
+
+          const bg = filled ? cellHeatColor(v, minV, maxV) : 'transparent';
+          const disp = !filled ? '·' : (v <= NEG_INF / 2 ? '−∞' : String(v));
+
+          // Tiny arrow cue for winning direction
+          let arrow = '';
+          if (filled && (i > 0 || j > 0) && v > NEG_INF / 2) {
+            const st = getInspectorState(dp, i, j);
+            const wins = ({ M: dp.metaM, I: dp.metaI, D: dp.metaD }[st][i][j] || []).filter(c => c.win && c.from);
+            if (wins.length) {
+              const [, ni, nj] = wins[0].from;
+              if (ni === i - 1 && nj === j - 1) arrow = '↖';
+              else if (ni === i - 1) arrow = '↑';
+              else if (nj === j - 1) arrow = '←';
+            }
+          }
+          html += `<td class="${cls.join(' ')}" style="background:${bg};" data-i="${i}" data-j="${j}"><span class="cell-ptr">${arrow}</span>${disp}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody>';
+      $('dp-table').innerHTML = html;
+    }
+
+    function getInspectorState(dp, i, j) {
+      if (!dp.isAffine) return 'M';
+      if (activeLayer !== 'C') return activeLayer;
+      const vM = dp.M[i][j], vI = dp.I[i][j], vD = dp.D[i][j];
+      if (vM >= vI && vM >= vD) return 'M';
+      if (vI >= vD) return 'I';
+      return 'D';
+    }
+
+    function renderSummary() {
+      const dp = dpState;
+      let mid = '';
+      for (let k = 0; k < dp.strA.length; k++) {
+        const a = dp.strA[k], b = dp.strB[k];
+        if (a === '-' || b === '-') mid += '<span class="aln-gap"> </span>';
+        else if (a === b) mid += '<span class="aln-match">|</span>';
+        else mid += '<span class="aln-mm">.</span>';
+      }
+      const fmtSeq = (s) => s.split('').map(ch => ch === '-' ? '<span class="aln-gap">-</span>' : ch).join('');
+      $('aln-box').innerHTML =
+        `A: ${fmtSeq(dp.strA)}\n` +
+        `   ${mid}\n` +
+        `B: ${fmtSeq(dp.strB)}`;
+
+      $('kpi-score').textContent = dp.bestScore <= NEG_INF / 2 ? '−∞' : String(dp.bestScore);
+      $('kpi-paths').textContent = dp.totalPaths > CAP_PATHS ? '> 10⁹' : dp.totalPaths.toLocaleString();
+      const idInc = dp.alnLen > 0 ? (100 * dp.matches / dp.alnLen).toFixed(1) + '%' : '—';
+      const idExc = dp.comparable > 0 ? (100 * dp.matches / dp.comparable).toFixed(1) + '%' : '—';
+      $('kpi-id-inc').textContent = `${dp.matches}/${dp.alnLen} (${idInc})`;
+      $('kpi-id-exc').textContent = `${dp.matches}/${dp.comparable} (${idExc})`;
+    }
+
+    function renderInspector(i, j) {
+      const dp = dpState;
+      const st = getInspectorState(dp, i, j);
+      const metas = ({ M: dp.metaM, I: dp.metaI, D: dp.metaD }[st][i][j]) || [];
+      const val = ({ M: dp.M, I: dp.I, D: dp.D }[st][i][j]);
+      const charA = i > 0 ? dp.seqA[i - 1] : '–';
+      const charB = j > 0 ? dp.seqB[j - 1] : '–';
+      const stateLbl = !dp.isAffine ? 'H' : st;
+
+      let html = `<div class="inspector-title">Cell (${i}, ${j}) · ${charA} vs ${charB} · ${stateLbl}[${i},${j}] = ${val <= NEG_INF / 2 ? '−∞' : val}</div>`;
+      if (dp.isAffine) {
+        const fmt = (v) => v <= NEG_INF / 2 ? '−∞' : v;
+        html += `<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);margin-bottom:4px;">M=${fmt(dp.M[i][j])} · I=${fmt(dp.I[i][j])} · D=${fmt(dp.D[i][j])}</div>`;
+      }
+      if (!metas.length) {
+        html += `<div style="color:var(--muted);">Origin / unreachable state (−∞).</div>`;
+      } else {
+        html += '<ul class="cand-list">';
+        for (const c of metas) {
+          html += `<li class="${c.win ? 'winner' : ''}"><span>${c.label}</span><span>${c.val <= NEG_INF / 2 ? '−∞' : c.val}${c.win ? ' ✓' : ''}</span></li>`;
+        }
+        html += '</ul>';
+      }
+      $('cell-inspector').innerHTML = html;
+    }
+
+    function stopPlay() {
+      if (playTimer) { clearInterval(playTimer); playTimer = null; $('btn-play').textContent = 'Play'; }
+    }
+
+    // ---- Events ----
+    $('preset-sel').addEventListener('change', (e) => {
+      stopPlay();
+      const p = PRESETS[e.target.value];
+      $('seq-a').value = p.a;
+      $('seq-b').value = p.b;
+      $('mode-sel').value = p.mode;
+      $('gap-mode-sel').value = p.gapMode;
+      $('score-mode-sel').value = p.scoreMode;
+      $('match-inp').value = p.match;
+      $('mm-inp').value = p.mm;
+      $('open-inp').value = p.open;
+      $('ext-inp').value = p.ext;
+      fillStep = Infinity;
+      selectedCell = null;
+      renderAll();
+    });
+
+    ['seq-a', 'seq-b', 'mode-sel', 'gap-mode-sel', 'score-mode-sel', 'match-inp', 'mm-inp', 'open-inp', 'ext-inp', 'chk-ties'].forEach(id => {
+      $(id).addEventListener('input', () => { stopPlay(); fillStep = Infinity; selectedCell = null; renderAll(); });
+    });
+
+    $('layer-seg').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-layer]');
+      if (!btn) return;
+      activeLayer = btn.dataset.layer;
+      $('layer-seg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+      renderTable();
+      if (selectedCell) renderInspector(selectedCell[0], selectedCell[1]);
+    });
+
+    $('dp-table').addEventListener('click', (e) => {
+      const td = e.target.closest('td[data-i]');
+      if (!td) return;
+      selectedCell = [parseInt(td.dataset.i, 10), parseInt(td.dataset.j, 10)];
+      renderTable();
+      renderInspector(selectedCell[0], selectedCell[1]);
+    });
+
+    $('btn-step').addEventListener('click', () => {
+      stopPlay();
+      const total = (dpState.n + 1) * (dpState.m + 1);
+      if (fillStep >= total) fillStep = 1;
+      else fillStep++;
+      const idx = fillStep - 1;
+      selectedCell = [Math.floor(idx / (dpState.m + 1)), idx % (dpState.m + 1)];
+      renderTable();
+      renderInspector(selectedCell[0], selectedCell[1]);
+    });
+
+    $('btn-play').addEventListener('click', () => {
+      if (playTimer) { stopPlay(); return; }
+      const total = (dpState.n + 1) * (dpState.m + 1);
+      if (fillStep >= total) fillStep = 1;
+      $('btn-play').textContent = 'Pause';
+      playTimer = setInterval(() => {
+        if (fillStep >= total) { stopPlay(); selectedCell = dpState.startCell; renderTable(); renderInspector(selectedCell[0], selectedCell[1]); return; }
+        fillStep++;
+        const idx = fillStep - 1;
+        selectedCell = [Math.floor(idx / (dpState.m + 1)), idx % (dpState.m + 1)];
+        renderTable();
+        renderInspector(selectedCell[0], selectedCell[1]);
+      }, 65);
+    });
+
+    $('btn-fill').addEventListener('click', () => {
+      stopPlay();
+      fillStep = Infinity;
+      selectedCell = dpState.startCell;
+      renderAll();
+    });
+
+    // Expose pure solver for automated verification
+    window.__dpLab = { computeDP };
+    renderAll();
+  </script>
+</body>
+</html>
+
