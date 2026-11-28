@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>APC Contact Denoising, Zero-Shot Log-Odds &amp; DMS Benchmark Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 155px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 295px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    canvas.sq { width: 295px; height: 295px; margin: 0 auto; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="APC contact and zero-shot fitness labs">
+    <button type="button" role="tab" id="tab-apc" aria-selected="true">1. Attention Symmetrization &amp; Average Product Correction (APC)</button>
+    <button type="button" role="tab" id="tab-fit" aria-selected="false">2. Zero-Shot Log-Odds (log Z Cancellation) &amp; DMS Correlation (r vs. ρ)</button>
+  </div>
+
+  <!-- TAB 1: APC Contact Denoising -->
+  <div role="tabpanel" id="panel-apc" aria-labelledby="tab-apc">
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Entropy / Phylogenetic Streak Noise α</span><span class="ctrl-val" id="v-str">0.75</span></span>
+        <input type="range" id="s-str" min="0.0" max="1.0" step="0.05" value="0.75"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Attention Asymmetry Level</span><span class="ctrl-val" id="v-asy">0.30</span></span>
+        <input type="range" id="s-asy" min="0.0" max="1.0" step="0.05" value="0.30"></label>
+      <div class="btn-group">
+        <button type="button" class="btn active" id="btn-rings">Show True 3D Contacts</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Raw Asymmetric Attention A</span>
+          <span class="badge bad" id="apc-raw-badge">Precision: —</span>
+        </div>
+        <canvas id="c-raw" class="sq"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Symmetrized + APC Map (A_APC = Ā − Ā_i·Ā_·j / Ā_··)</span>
+          <span class="badge ok" id="apc-fix-badge">Precision: —</span>
+        </div>
+        <canvas id="c-apc" class="sq"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Raw Top-10 Precision (|i−j|&gt;4)</div><div class="kpi-val" id="ak-raw">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Symmetrized Only Precision</div><div class="kpi-val" id="ak-sym">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Sym + APC Precision</div><div class="kpi-val" style="color:var(--ok);" id="ak-apc">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Precision Gain from APC</div><div class="kpi-val" id="ak-gain">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Zero-Shot Log-Odds & DMS -->
+  <div role="tabpanel" id="panel-fit" aria-labelledby="tab-fit" hidden>
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Constant Logit Offset +c (tests log Z cancel)</span><span class="ctrl-val" id="v-c">+0.0</span></span>
+        <input type="range" id="s-c" min="-10" max="10" step="0.5" value="0"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>DMS Fluorescence Assay Saturation</span><span class="ctrl-val" id="v-sat">0.70</span></span>
+        <input type="range" id="s-sat" min="0.0" max="1.0" step="0.05" value="0.70"></label>
+      <div class="btn-group">
+        <button type="button" class="btn" id="m-val">Mut L→V (mild)</button>
+        <button type="button" class="btn active" id="m-pro">Mut L→P (severe)</button>
+        <button type="button" class="btn" id="m-asp">Mut L→D (lethal)</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Masked-Site Logits z_a + c (Click Any Bar to Score Mutation)</span>
+          <span class="badge ok" id="fit-z-badge">log Z err = 0.00e+00</span>
+        </div>
+        <canvas id="c-logits"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Synthetic 60-Variant DMS Benchmark (Pearson r vs. Spearman ρ)</span>
+          <span class="badge" id="fit-rho-badge">ρ = — vs r = —</span>
+        </div>
+        <canvas id="c-dms"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">log P(mut) − log P(wt)</div><div class="kpi-val" id="fk-lp">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Raw Logit Diff z_mut − z_wt</div><div class="kpi-val" id="fk-lz">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">DMS Pearson Linear r</div><div class="kpi-val" id="fk-r">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">DMS Spearman Rank ρ</div><div class="kpi-val" style="color:var(--ok);" id="fk-rho">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => { if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme); });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    function mulberry32(seed) {
+      return function() {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // ---- Pure APC, Log-Odds & Correlation Math ----
+    function apcMatrix(A) {
+      const N = A.length;
+      const sym = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (__, j) => 0.5 * (A[i][j] + A[j][i])));
+      const rowM = sym.map(r => r.reduce((a, b) => a + b, 0) / N);
+      const colM = Array.from({ length: N }, (_, j) => sym.reduce((s, r) => s + r[j], 0) / N);
+      const totM = rowM.reduce((a, b) => a + b, 0) / N || 1;
+      const apc = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (__, j) => sym[i][j] - (rowM[i] * colM[j]) / totM));
+      return { sym, apc };
+    }
+
+    function pearson(x, y) {
+      const n = x.length;
+      const mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n;
+      let num = 0, dx2 = 0, dy2 = 0;
+      for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; num += dx * dy; dx2 += dx * dx; dy2 += dy * dy; }
+      return num / Math.sqrt((dx2 * dy2) || 1);
+    }
+
+    function ranks(arr) {
+      const idx = arr.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+      const r = new Array(arr.length);
+      for (let k = 0; k < idx.length; ) {
+        let m = k;
+        while (m + 1 < idx.length && idx[m + 1].v === idx[k].v) m++;
+        const avg = 0.5 * (k + m) + 1;
+        for (let t = k; t <= m; t++) r[idx[t].i] = avg;
+        k = m + 1;
+      }
+      return r;
+    }
+    const spearman = (x, y) => pearson(ranks(x), ranks(y));
+
+    function logOddsCheck(logits, wtIdx, mutIdx, shiftC) {
+      const shifted = logits.map(z => z + shiftC);
+      const m = Math.max(...shifted);
+      const ex = shifted.map(z => Math.exp(z - m));
+      const Z = ex.reduce((a, b) => a + b, 0);
+      const logP = shifted.map(z => (z - m) - Math.log(Z));
+      const viaProb = logP[mutIdx] - logP[wtIdx];
+      const viaLogit = shifted[mutIdx] - shifted[wtIdx];
+      return { viaProb, viaLogit, err: Math.abs(viaProb - viaLogit), shifted };
+    }
+
+    // ---- Tab 1 Synthetic Fold & Noise ----
+    const N = 24;
+    const CONTACTS = [[10,23],[11,22],[12,21],[13,20],[14,19],[2,16],[3,15],[4,14],[5,13],[6,12]];
+    const TRUTH = Array.from({ length: N }, () => new Array(N).fill(0));
+    CONTACTS.forEach(([i, j]) => { TRUTH[i][j] = TRUTH[j][i] = 1; });
+    const RNG1 = mulberry32(314);
+    const ASYM_NOISE = Array.from({ length: N }, () => Array.from({ length: N }, () => RNG1()));
+
+    function buildRawAttn(streakAlpha, asymAlpha) {
+      const colB = new Array(N).fill(0);
+      colB[3] = 0.52; colB[7] = 0.48; colB[17] = 0.55; colB[21] = 0.44;
+      const rowB = new Array(N).fill(0);
+      rowB[5] = 0.34; rowB[15] = 0.38; rowB[20] = 0.32;
+      const raw = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (__, j) => {
+        let s = (i === j ? 0.25 : 0) + (Math.abs(i - j) === 1 ? 0.20 : 0);
+        if (i < 7 && j === i + 4) s += 0.30;
+        if (j < 7 && i === j + 4) s += 0.30;
+        if (TRUTH[i][j]) s += 0.36;
+        s += streakAlpha * (colB[j] + rowB[i]) + asymAlpha * 0.16 * ASYM_NOISE[i][j];
+        return s;
+      }));
+      return raw.map(r => { const s = r.reduce((a, b) => a + b, 0) || 1; return r.map(v => v / s); });
+    }
+
+    function top10Prec(M) {
+      const items = [];
+      for (let i = 0; i < N; i++) for (let j = i + 5; j < N; j++) items.push({ v: M[i][j], t: TRUTH[i][j] });
+      items.sort((a, b) => b.v - a.v);
+      return items.slice(0, CONTACTS.length).reduce((s, o) => s + o.t, 0) / CONTACTS.length;
+    }
+
+    // ---- Tab 2 Logits & 60-Variant Synthetic DMS ----
+    const AAS = ['L*','I','V','M','F','A','Y','W','T','S','G','P','K','E','D'];
+    const BASE_LOGITS = [2.6, 2.2, 1.9, 1.4, 1.1, 0.3, 0.1, -0.4, -0.9, -1.3, -1.9, -3.2, -3.5, -3.9, -4.2];
+    const RNG2 = mulberry32(2026);
+    const DMS_ESM = Array.from({ length: 60 }, (_, k) => -8.8 + (k / 59) * 10.0 + (RNG2() - 0.5) * 0.6);
+    const DMS_NOISE = Array.from({ length: 60 }, () => (RNG2() - 0.5) * 0.22);
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+    function viridis(v) {
+      const c = Math.max(0, Math.min(1, v));
+      const stops = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+      const s = c * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(s)), f = s - i;
+      return `rgb(${Math.round(stops[i][0]+f*(stops[i+1][0]-stops[i][0]))},${Math.round(stops[i][1]+f*(stops[i+1][1]-stops[i][1]))},${Math.round(stops[i][2]+f*(stops[i+1][2]-stops[i][2]))})`;
+    }
+
+    let showRings = true, selMutIdx = 11; // Proline ('P')
+    const $ = (id) => document.getElementById(id);
+
+    function drawHeatmap(canvas, M, clampZero) {
+      const c = prepCanvas(canvas);
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+      const pL = 22, pB = 20, pT = 8, pR = 8, pw = W - pL - pR, ph = H - pT - pB;
+      const cw = pw / N, ch = ph / N;
+      const vals = M.flat().map(v => clampZero ? Math.max(0, v) : v);
+      const lo = Math.min(...vals), hi = Math.max(lo + 1e-6, ...vals);
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+          const v = clampZero ? Math.max(0, M[i][j]) : M[i][j];
+          ctx.fillStyle = viridis((v - lo) / (hi - lo));
+          ctx.fillRect(pL + j * cw, pT + (N - 1 - i) * ch, Math.ceil(cw), Math.ceil(ch));
+        }
+      }
+      if (showRings) {
+        ctx.strokeStyle = '#f87171'; ctx.lineWidth = 1.6;
+        CONTACTS.forEach(([i, j]) => {
+          ctx.beginPath(); ctx.arc(pL + (j + 0.5) * cw, pT + (N - 0.5 - i) * ch, cw * 0.46, 0, Math.PI * 2); ctx.stroke();
+        });
+      }
+      ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1;
+      ctx.strokeRect(pL, pT, pw, ph);
+    }
+
+    function renderTab1() {
+      const str = +$('s-str').value, asy = +$('s-asy').value;
+      $('v-str').textContent = str.toFixed(2); $('v-asy').textContent = asy.toFixed(2);
+      const raw = buildRawAttn(str, asy);
+      const { sym, apc } = apcMatrix(raw);
+      drawHeatmap($('c-raw'), raw, false);
+      drawHeatmap($('c-apc'), apc, true);
+
+      const pRaw = top10Prec(raw), pSym = top10Prec(sym), pApc = top10Prec(apc);
+      $('ak-raw').textContent = `${(pRaw * 100).toFixed(0)}%`;
+      $('ak-sym').textContent = `${(pSym * 100).toFixed(0)}%`;
+      $('ak-apc').textContent = `${(pApc * 100).toFixed(0)}%`;
+      const gain = (pApc - pRaw) * 100;
+      $('ak-gain').textContent = `${gain >= 0 ? '+' : ''}${gain.toFixed(0)} pp`;
+      $('ak-gain').style.color = gain > 0 ? 'var(--ok)' : 'var(--muted)';
+      $('apc-raw-badge').textContent = `Top-10: ${(pRaw * 100).toFixed(0)}%`;
+      $('apc-fix-badge').textContent = `Top-10: ${(pApc * 100).toFixed(0)}%`;
+    }
+
+    function renderTab2() {
+      const shiftC = +$('s-c').value, sat = +$('s-sat').value;
+      $('v-c').textContent = `${shiftC >= 0 ? '+' : ''}${shiftC.toFixed(1)}`;
+      $('v-sat').textContent = sat.toFixed(2);
+      const lo = logOddsCheck(BASE_LOGITS, 0, selMutIdx, shiftC);
+
+      // Left: Logits bar chart
+      const c1 = prepCanvas($('c-logits'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 36, pR = 12, pT = 18, pB = 28, pw = W - pL - pR, ph = H - pT - pB;
+        const mn = Math.min(-5, ...lo.shifted) - 1, mx = Math.max(5, ...lo.shifted) + 1;
+        const yOf = (v) => pT + ((mx - v) / (mx - mn)) * ph;
+        const y0 = yOf(0);
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, y0); ctx.lineTo(pL + pw, y0); ctx.stroke();
+
+        const bw = pw / AAS.length * 0.68;
+        lo.shifted.forEach((z, idx) => {
+          const cx = pL + (idx + 0.5) * (pw / AAS.length);
+          const yv = yOf(z);
+          ctx.fillStyle = idx === 0 ? '#16a34a' : (idx === selMutIdx ? '#dc2626' : '#2563eb');
+          ctx.fillRect(cx - bw / 2, Math.min(y0, yv), bw, Math.abs(yv - y0));
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'center';
+          ctx.fillText(AAS[idx], cx, H - 9);
+        });
+        ctx.textAlign = 'left';
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText(`Green = WT (L) · Red = Mut (${AAS[selMutIdx]}) · Δs = ${lo.viaLogit.toFixed(2)}`, pL + 4, 14);
+      }
+
+      // Right: DMS scatter with adjustable non-linear fluorescence curve (Spearman rho stays high as Pearson r bends down!)
+      const rawExp = DMS_ESM.map(s => Math.exp(0.62 * (s - 0.8)) / (1 + 0.15 * Math.exp(0.62 * (s - 0.8))));
+      const maxExp = Math.max(...rawExp);
+      const obsF = DMS_ESM.map((s, i) => {
+        const lin = (s + 8.8) / 10.0;
+        const nonlin = rawExp[i] / maxExp;
+        return Math.max(0.0, Math.min(1.08, (1 - sat) * lin + sat * nonlin + DMS_NOISE[i] * 0.25));
+      });
+      const rVal = pearson(obsF, DMS_ESM);
+      const rhoVal = spearman(obsF, DMS_ESM);
+
+      const c2 = prepCanvas($('c-dms'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 38, pR = 14, pT = 16, pB = 28, pw = W - pL - pR, ph = H - pT - pB;
+        const xOf = (f) => pL + ((f + 0.18) / 1.40) * pw;
+        const yOf = (s) => pT + ((1.8 - s) / 11.4) * ph;
+
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        // Linear fit
+        const mx = obsF.reduce((a, b) => a + b, 0) / obsF.length;
+        const my = DMS_ESM.reduce((a, b) => a + b, 0) / DMS_ESM.length;
+        const slope = obsF.reduce((s, x, i) => s + (x - mx) * (DMS_ESM[i] - my), 0) / (obsF.reduce((s, x) => s + (x - mx) ** 2, 0) || 1);
+        const intercept = my - slope * mx;
+        ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = cs.getPropertyValue('--muted').trim(); ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(xOf(-0.1), yOf(slope * -0.1 + intercept)); ctx.lineTo(xOf(1.15), yOf(slope * 1.15 + intercept)); ctx.stroke(); ctx.restore();
+
+        obsF.forEach((f, i) => {
+          ctx.fillStyle = f < 0.35 ? '#dc2626' : (f < 0.70 ? '#d97706' : '#16a34a');
+          ctx.beginPath(); ctx.arc(xOf(f), yOf(DMS_ESM[i]), 3.8, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Experimental DMS Fluorescence (0 = dark, 1 = WT)', pL + pw / 2 - 108, H - 8);
+      }
+
+      $('fit-z-badge').textContent = `log Z err = ${lo.err.toExponential(2)}`;
+      $('fit-rho-badge').textContent = `ρ = ${rhoVal.toFixed(3)} vs r = ${rVal.toFixed(3)}`;
+      $('fk-lp').textContent = lo.viaProb.toFixed(4);
+      $('fk-lz').textContent = lo.viaLogit.toFixed(4);
+      $('fk-r').textContent = rVal.toFixed(3);
+      $('fk-rho').textContent = rhoVal.toFixed(3);
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+    ['s-str', 's-asy'].forEach(id => $(id).addEventListener('input', renderTab1));
+    $('btn-rings').addEventListener('click', () => { showRings = !showRings; $('btn-rings').classList.toggle('active', showRings); renderTab1(); });
+    ['s-c', 's-sat'].forEach(id => $(id).addEventListener('input', renderTab2));
+    function setMut(idx, id) { selMutIdx = idx; ['m-val','m-pro','m-asp'].forEach(k => $(k).classList.toggle('active', k === id)); renderTab2(); }
+    $('m-val').addEventListener('click', () => setMut(2, 'm-val'));
+    $('m-pro').addEventListener('click', () => setMut(11, 'm-pro'));
+    $('m-asp').addEventListener('click', () => setMut(14, 'm-asp'));
+    $('c-logits').addEventListener('click', (e) => {
+      const rect = $('c-logits').getBoundingClientRect();
+      const idx = Math.max(1, Math.min(AAS.length - 1, Math.floor(((e.clientX - rect.left - 36) / (rect.width - 48)) * AAS.length)));
+      selMutIdx = idx; ['m-val','m-pro','m-asp'].forEach(k => $(k).classList.remove('active')); renderTab2();
+    });
+
+    new ResizeObserver(renderAll).observe($('c-raw'));
+    renderAll();
+  </script>
+</body>
+</html>

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Scaled Dot-Product Attention, Softmax Stability &amp; Multi-Head Routing Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 155px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    input[type="range"] { width: 100%; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+      .chk-opt input[type="checkbox"] {
+        position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
+        width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important;
+      }
+      .chk-opt { position: relative; padding-left: 22px; }
+      .chk-opt input[type="checkbox"] + span::before {
+        content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+        width: 14px; height: 14px; border: 2px solid var(--border); border-radius: 3px; background: var(--bg);
+      }
+      .chk-opt input[type="checkbox"]:checked + span::before { background: var(--accent); border-color: var(--accent); }
+    }
+    .chk-opt { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.05fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 290px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    canvas.hm { width: 290px; height: 290px; margin: 0 auto; cursor: pointer; }
+
+    .table-wrapper { overflow: auto; max-height: 290px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { position: sticky; top: 0; background: var(--surface2); font-weight: 700; color: var(--muted); }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Self-attention labs">
+    <button type="button" role="tab" id="tab-scale" aria-selected="true">1. Variance Scaling (1/√d_k) &amp; Softmax Overflow Guard</button>
+    <button type="button" role="tab" id="tab-mh" aria-selected="false">2. Multi-Head Protein Attention (&lt;cls&gt; Offset &amp; Specialized Heads)</button>
+  </div>
+
+  <!-- TAB 1: Scaling & Overflow Stability -->
+  <div role="tabpanel" id="panel-scale" aria-labelledby="tab-scale">
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Head Dimension d_k</span><span class="ctrl-val" id="v-dk">64</span></span>
+        <input type="range" id="s-dk" min="4" max="256" step="4" value="64"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Logit Offset Stress +M (overflows &gt; 709)</span><span class="ctrl-val" id="v-M">+0</span></span>
+        <input type="range" id="s-M" min="0" max="800" step="20" value="0"></label>
+      <label class="chk-opt"><input type="checkbox" id="chk-scale" checked><span>Divide by √d_k</span></label>
+      <label class="chk-opt"><input type="checkbox" id="chk-max" checked><span>Subtract max(S)</span></label>
+      <button type="button" class="btn" id="btn-stress">Trigger Overflow (M=750)</button>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Attention Row Weights Aᵢⱼ Across 12 Keys (Saturation Check)</span>
+          <span class="badge ok" id="sat-badge">Healthy Gradients</span>
+        </div>
+        <canvas id="c-attnbar"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Naive exp(S) vs. Stable exp(S − max) Row Evaluation</span>
+          <span class="badge ok" id="ovf-badge">Finite &amp; Exact</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="Softmax numerical stability comparison">
+          <table>
+            <thead><tr><th>Key j</th><th class="num">Score Sᵢⱼ + M</th><th class="num">Naive exp(S)</th><th class="num">Stable Aᵢⱼ</th></tr></thead>
+            <tbody id="sm-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Std Dev of Scores σ(S)</div><div class="kpi-val" id="sk-std">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Softmax Entropy H / log L</div><div class="kpi-val" id="sk-ent">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Max Jacobian |∂A/∂S|</div><div class="kpi-val" id="sk-grad">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Row Sum Σ Aᵢⱼ</div><div class="kpi-val" id="sk-sum">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Multi-Head Attention Explorer -->
+  <div role="tabpanel" id="panel-mh" aria-labelledby="tab-mh" hidden>
+    <div class="ctrl-bar">
+      <div class="btn-group" aria-label="Attention head selector">
+        <button type="button" class="btn active" id="h-all">Mean All Heads</button>
+        <button type="button" class="btn" id="h-loc">Head 1: Local (i±1)</button>
+        <button type="button" class="btn" id="h-hel">Head 2: α-Helix (i→i+4)</button>
+        <button type="button" class="btn" id="h-lr">Head 3: 3D Contact (5↔14)</button>
+      </div>
+      <span class="badge" id="cls-note">Token idx = 0-based res + 1 (&lt;cls&gt; at 0)</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Attention Arcs From Selected Query Token (Click Heatmap or Token)</span>
+          <span class="badge" id="mh-q-badge">Query: token 6 (res 5)</span>
+        </div>
+        <canvas id="c-arcs"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>18×18 Attention Matrix (&lt;cls&gt; + 16 Residues + &lt;eos&gt;)</span>
+          <span class="badge ok" id="mh-top-badge">Top Target: —</span>
+        </div>
+        <canvas id="c-mhm" class="hm"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Selected Query Token</div><div class="kpi-val" id="mk-q">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">0-Based Sequence Index</div><div class="kpi-val" id="mk-seq">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Peak Attention Target</div><div class="kpi-val" id="mk-tgt">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Peak Weight Aᵢⱼ</div><div class="kpi-val" id="mk-w">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => { if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme); });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Exact Scaled Dot-Product Attention & Softmax ----
+    function mulberry32(seed) {
+      return function() {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function randnMat(r, c, seed) {
+      const rng = mulberry32(seed);
+      return Array.from({ length: r }, () => Array.from({ length: c }, () => {
+        const u1 = Math.max(1e-12, rng()), u2 = rng();
+        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      }));
+    }
+
+    function scaledDotProductAttention(Q, K, V, useScale = true, useMaxShift = true) {
+      const N = Q.length, dk = Q[0].length, dv = V[0].length;
+      const denom = useScale ? Math.sqrt(dk) : 1.0;
+      const scores = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (__, j) => {
+        let s = 0;
+        for (let m = 0; m < dk; m++) s += Q[i][m] * K[j][m];
+        return s / denom;
+      }));
+      const attn = scores.map(row => {
+        const m = useMaxShift ? Math.max(...row) : 0;
+        const ex = row.map(v => Math.exp(v - m));
+        const sum = ex.reduce((a, b) => a + b, 0);
+        return ex.map(v => v / sum);
+      });
+      const out = Array.from({ length: N }, (_, i) => Array.from({ length: dv }, (__, d) => {
+        let s = 0;
+        for (let j = 0; j < N; j++) s += attn[i][j] * V[j][d];
+        return s;
+      }));
+      return { out, attn, scores };
+    }
+
+    // Pre-generate 256-dim base vectors for Tab 1 (slice first dk dims smoothly)
+    const Q1_FULL = randnMat(1, 256, 42)[0];
+    const K1_FULL = randnMat(12, 256, 99);
+
+    // Build 3 realistic specialized attention heads on 18 tokens (<cls> + 16 AA + <eos>)
+    const TOKENS = ['<cls>','M','S','K','G','E','E','L','F','T','G','V','V','P','I','L','V','<eos>'];
+    const NT = TOKENS.length;
+    function buildHead(kind) {
+      const S = Array.from({ length: NT }, () => new Array(NT).fill(-2.5));
+      for (let i = 0; i < NT; i++) {
+        S[i][i] = 0.6;
+        if (kind === 'loc') {
+          if (i > 0) S[i][i - 1] = 2.6;
+          if (i < NT - 1) S[i][i + 1] = 2.6;
+        } else if (kind === 'hel') {
+          if (i >= 1 && i <= 12) {
+            if (i + 4 <= 16) S[i][i + 4] = 3.2;
+            if (i - 4 >= 1) S[i][i - 4] = 3.2;
+          }
+          S[i][0] = 0.4;
+        } else if (kind === 'lr') {
+          // Strong 3D contacts connecting residue 5 (tok 6) <-> residue 14 (tok 15) and neighbors
+          const contacts = [[6, 15], [5, 16], [7, 14], [4, 15], [8, 13]];
+          for (const [a, b] of contacts) { S[a][b] = 3.8; S[b][a] = 3.8; }
+          S[i][0] = 0.3;
+        }
+      }
+      return S.map(row => {
+        const m = Math.max(...row);
+        const ex = row.map(v => Math.exp(v - m));
+        const sum = ex.reduce((a, b) => a + b, 0);
+        return ex.map(v => v / sum);
+      });
+    }
+    const HEADS = {
+      loc: buildHead('loc'),
+      hel: buildHead('hel'),
+      lr: buildHead('lr')
+    };
+    HEADS.all = Array.from({ length: NT }, (_, i) => Array.from({ length: NT }, (__, j) =>
+      (HEADS.loc[i][j] + HEADS.hel[i][j] + HEADS.lr[i][j]) / 3
+    ));
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+    function viridis(v) {
+      const c = Math.max(0, Math.min(1, v));
+      const stops = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+      const s = c * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(s)), f = s - i;
+      return `rgb(${Math.round(stops[i][0]+f*(stops[i+1][0]-stops[i][0]))},${Math.round(stops[i][1]+f*(stops[i+1][1]-stops[i][1]))},${Math.round(stops[i][2]+f*(stops[i+1][2]-stops[i][2]))})`;
+    }
+
+    let curHead = 'all', selTok = 6; // Token 6 = 0-based residue 5 ('E')
+    const $ = (id) => document.getElementById(id);
+
+    function renderTab1() {
+      const dk = +$('s-dk').value, M = +$('s-M').value;
+      const useScale = $('chk-scale').checked, useMax = $('chk-max').checked;
+      $('v-dk').textContent = String(dk); $('v-M').textContent = `+${M}`;
+      const denom = useScale ? Math.sqrt(dk) : 1.0;
+
+      const rawScores = K1_FULL.map(k => {
+        let s = 0; for (let m = 0; m < dk; m++) s += Q1_FULL[m] * k[m];
+        return s / denom + M;
+      });
+      const meanS = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+      const stdS = Math.sqrt(rawScores.reduce((a, v) => a + (v - meanS) * (v - meanS), 0) / rawScores.length);
+
+      // Always compute exact stable softmax AND displayed (potentially naive) softmax
+      const maxS = Math.max(...rawScores);
+      const stabEx = rawScores.map(v => Math.exp(v - maxS));
+      const stabSum = stabEx.reduce((a, b) => a + b, 0);
+      const stabA = stabEx.map(v => v / stabSum);
+
+      const naiveEx = rawScores.map(v => Math.exp(v));
+      const naiveSum = naiveEx.reduce((a, b) => a + b, 0);
+      const naiveA = naiveEx.map(v => v / naiveSum);
+
+      const dispA = useMax ? stabA : naiveA;
+      const hasNaN = dispA.some(v => !Number.isFinite(v));
+
+      const c1 = prepCanvas($('c-attnbar'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 36, pR = 14, pT = 18, pB = 28, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        if (hasNaN) {
+          ctx.fillStyle = '#dc2626'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('OVERFLOW: exp(S) = Infinity → Infinity / Infinity = NaN!', W / 2, H / 2 - 8);
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '12px system-ui, sans-serif';
+          ctx.fillText('Enable "Subtract max(S)" to restore exact finite probabilities.', W / 2, H / 2 + 14);
+          ctx.textAlign = 'left';
+        } else {
+          const bw = pw / 12 * 0.68;
+          dispA.forEach((a, j) => {
+            const cx = pL + (j + 0.5) * (pw / 12);
+            const bh = a * ph;
+            ctx.fillStyle = a > 0.75 ? '#dc2626' : '#2563eb';
+            ctx.fillRect(cx - bw / 2, pT + ph - bh, bw, bh);
+            ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'center';
+            ctx.fillText(`k${j+1}`, cx, H - 9);
+          });
+          ctx.textAlign = 'left';
+        }
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px ui-monospace, monospace';
+        ctx.fillText('1.0', 8, pT + 6); ctx.fillText('0.5', 8, pT + ph / 2 + 3); ctx.fillText('0.0', 8, pT + ph);
+      }
+
+      $('sm-tbody').innerHTML = rawScores.map((s, j) => {
+        const ne = naiveEx[j];
+        const neStr = !Number.isFinite(ne) ? '<span style="color:var(--bad);font-weight:700;">Infinity</span>' : (ne > 1e5 ? ne.toExponential(2) : ne.toFixed(2));
+        return `<tr><td>Key ${j + 1}</td><td class="num">${s.toFixed(2)}</td><td class="num">${neStr}</td><td class="num" style="color:var(--accent);font-weight:700;">${stabA[j].toFixed(4)}</td></tr>`;
+      }).join('');
+
+      const ent = hasNaN ? NaN : -dispA.reduce((s, p) => s + (p > 1e-15 ? p * Math.log(p) : 0), 0) / Math.log(12);
+      const maxGrad = hasNaN ? NaN : Math.max(...dispA.map(p => p * (1 - p)));
+      const rowSum = dispA.reduce((a, b) => a + b, 0);
+
+      $('sk-std').textContent = stdS.toFixed(2);
+      $('sk-ent').textContent = Number.isFinite(ent) ? ent.toFixed(3) : 'NaN';
+      $('sk-grad').textContent = Number.isFinite(maxGrad) ? maxGrad.toFixed(4) : 'NaN';
+      $('sk-sum').textContent = Number.isFinite(rowSum) ? rowSum.toFixed(6) : 'NaN';
+
+      const sb = $('sat-badge'), ob = $('ovf-badge');
+      if (hasNaN) { sb.textContent = 'NaN Overflow!'; sb.className = 'badge bad'; ob.textContent = 'exp(S) Overflowed!'; ob.className = 'badge bad'; }
+      else {
+        ob.textContent = naiveEx.some(v => !Number.isFinite(v)) ? 'Naive Inf → Guarded!' : 'Finite & Exact';
+        ob.className = naiveEx.some(v => !Number.isFinite(v)) ? 'badge warn' : 'badge ok';
+        if (maxGrad < 0.04) { sb.textContent = 'Saturated (Grads ≈ 0!)'; sb.className = 'badge bad'; }
+        else if (maxGrad < 0.14) { sb.textContent = 'Partially Saturated'; sb.className = 'badge warn'; }
+        else { sb.textContent = 'Healthy Gradients'; sb.className = 'badge ok'; }
+      }
+    }
+
+    function renderTab2() {
+      const A = HEADS[curHead];
+      const row = A[selTok];
+      let bestJ = 0;
+      row.forEach((v, j) => { if (v > row[bestJ]) bestJ = j; });
+
+      // Left: Attention Arc Diagram
+      const c1 = prepCanvas($('c-arcs'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 22, pR = 22, yBase = H - 56, span = W - pL - pR;
+        const xOf = (i) => pL + (i / (NT - 1)) * span;
+
+        // Draw weighted arcs from selTok to all j
+        row.forEach((w, j) => {
+          if (w < 0.025 || j === selTok) return;
+          const x1 = xOf(selTok), x2 = xOf(j), xm = 0.5 * (x1 + x2);
+          const rad = Math.abs(x2 - x1) * 0.48;
+          ctx.beginPath();
+          ctx.moveTo(x1, yBase - 14);
+          ctx.quadraticCurveTo(xm, Math.max(16, yBase - 24 - rad), x2, yBase - 14);
+          ctx.strokeStyle = Math.abs(j - selTok) > 4 ? `rgba(220, 38, 38, ${Math.min(1, w * 2.4)})` : `rgba(37, 99, 235, ${Math.min(1, w * 2.2)})`;
+          ctx.lineWidth = Math.max(1.2, w * 9.5);
+          ctx.stroke();
+        });
+
+        // Draw token pills
+        TOKENS.forEach((tok, i) => {
+          const x = xOf(i);
+          const isSpec = i === 0 || i === NT - 1;
+          const isQ = i === selTok, isTop = i === bestJ;
+          ctx.fillStyle = isQ ? '#2563eb' : (isTop ? '#dc2626' : (isSpec ? '#7c3aed' : cs.getPropertyValue('--surface2').trim()));
+          ctx.strokeStyle = isQ || isTop ? '#ffffff' : cs.getPropertyValue('--border').trim();
+          ctx.lineWidth = 1.4;
+          const rw = isSpec ? 28 : 17;
+          ctx.beginPath(); ctx.roundRect(x - rw / 2, yBase - 12, rw, 22, 4); ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = (isQ || isTop || isSpec) ? '#ffffff' : cs.getPropertyValue('--text').trim();
+          ctx.font = isSpec ? 'bold 8.5px ui-monospace, monospace' : 'bold 10.5px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(isSpec ? tok.slice(1,4) : tok, x, yBase + 3);
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '8.5px ui-monospace, monospace';
+          ctx.fillText(String(i), x, yBase + 22);
+          if (!isSpec) ctx.fillText(`r${i - 1}`, x, yBase + 34);
+        });
+        ctx.textAlign = 'left';
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Blue arcs = local/helical · Red arcs = long-range 3D contacts (|i−j| > 4)', 10, 16);
+      }
+
+      // Right: 18x18 Attention Heatmap
+      const c2 = prepCanvas($('c-mhm'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 22, pB = 22, pT = 8, pR = 8, pw = W - pL - pR, ph = H - pT - pB;
+        const cw = pw / NT, ch = ph / NT;
+        const maxW = Math.max(0.25, ...A.flat());
+        for (let i = 0; i < NT; i++) {
+          for (let j = 0; j < NT; j++) {
+            ctx.fillStyle = viridis(A[i][j] / maxW);
+            ctx.fillRect(pL + j * cw, pT + i * ch, Math.ceil(cw), Math.ceil(ch));
+          }
+        }
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.8;
+        ctx.strokeRect(pL, pT + selTok * ch, pw, ch);
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1;
+        ctx.strokeRect(pL, pT, pw, ph);
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '9.5px ui-monospace, monospace';
+        ctx.fillText('0(<cls>)', pL, H - 6); ctx.fillText('17(<eos>)', pL + pw - 54, H - 6);
+      }
+
+      const seqStr = (selTok === 0 || selTok === NT - 1) ? 'Special token' : `res ${selTok - 1} (${TOKENS[selTok]})`;
+      const tgtStr = (bestJ === 0 || bestJ === NT - 1) ? TOKENS[bestJ] : `tok ${bestJ} (res ${bestJ - 1}: ${TOKENS[bestJ]})`;
+      $('mh-q-badge').textContent = `Query: tok ${selTok} (${seqStr})`;
+      $('mh-top-badge').textContent = `Peak: ${tgtStr}`;
+      $('mk-q').textContent = `tok ${selTok} (${TOKENS[selTok]})`;
+      $('mk-seq').textContent = seqStr;
+      $('mk-tgt').textContent = tgtStr;
+      $('mk-w').textContent = row[bestJ].toFixed(3);
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+    ['s-dk','s-M','chk-scale','chk-max'].forEach(id => $(id).addEventListener('input', renderTab1));
+    $('btn-stress').addEventListener('click', () => { $('s-M').value = 750; $('chk-max').checked = false; renderTab1(); });
+    function setH(k, id) { curHead = k; ['h-all','h-loc','h-hel','h-lr'].forEach(x => $(x).classList.toggle('active', x === id)); renderTab2(); }
+    $('h-all').addEventListener('click', () => setH('all', 'h-all'));
+    $('h-loc').addEventListener('click', () => setH('loc', 'h-loc'));
+    $('h-hel').addEventListener('click', () => setH('hel', 'h-hel'));
+    $('h-lr').addEventListener('click', () => setH('lr', 'h-lr'));
+
+    $('c-mhm').addEventListener('click', (e) => {
+      const rect = $('c-mhm').getBoundingClientRect();
+      const i = Math.max(0, Math.min(NT - 1, Math.floor(((e.clientY - rect.top - 8) / (rect.height - 30)) * NT)));
+      selTok = i; renderTab2();
+    });
+    $('c-arcs').addEventListener('click', (e) => {
+      const rect = $('c-arcs').getBoundingClientRect();
+      const i = Math.max(0, Math.min(NT - 1, Math.round(((e.clientX - rect.left - 22) / (rect.width - 44)) * (NT - 1))));
+      selTok = i; renderTab2();
+    });
+
+    new ResizeObserver(renderAll).observe($('c-attnbar'));
+    renderAll();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Potts Epistasis vs. PSSM &amp; Rotary Positional Embeddings (RoPE) Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 165px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.05fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+
+    canvas { width: 100%; height: 295px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Potts epistasis and RoPE labs">
+    <button type="button" role="tab" id="tab-potts" aria-selected="true">1. PSSM Independence vs. Potts Co-Evolution (J_ij &amp; MI_ij)</button>
+    <button type="button" role="tab" id="tab-rope" aria-selected="false">2. Rotary Positional Embeddings (RoPE) Shift Invariance</button>
+  </div>
+
+  <!-- TAB 1: Potts vs PSSM -->
+  <div role="tabpanel" id="panel-potts" aria-labelledby="tab-potts">
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Direct 3D Coupling Strength J (1–2, 2–3)</span><span class="ctrl-val" id="v-j">1.80</span></span>
+        <input type="range" id="s-j" min="0.0" max="3.0" step="0.1" value="1.8"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Selection Inverse Temp β</span><span class="ctrl-val" id="v-beta">1.00</span></span>
+        <input type="range" id="s-beta" min="0.2" max="2.2" step="0.1" value="1.0"></label>
+      <div class="btn-group">
+        <button type="button" class="btn" id="p-pssm">PSSM Limit (J = 0)</button>
+        <button type="button" class="btn active" id="p-potts">Coupled Fold (J = 1.8)</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Double-Mutant Epistasis: Additive PSSM vs. Potts Rescue</span>
+          <span class="badge ok" id="epi-badge">ΔΔs_epi = —</span>
+        </div>
+        <canvas id="c-epi"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Pairwise Mutual Info MI_ij (Indirect!) vs. Direct |J_ij|</span>
+          <span class="badge warn" id="mi-badge">Indirect (1,3) MI = —</span>
+        </div>
+        <canvas id="c-mi"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Single Mut A Δs(A)</div><div class="kpi-val" id="pk-a">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Additive Δs(A)+Δs(B)</div><div class="kpi-val" id="pk-add">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">True Double Mut Δs(AB)</div><div class="kpi-val" id="pk-ab">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Epistasis ΔΔs_epi</div><div class="kpi-val" id="pk-epi">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: RoPE -->
+  <div role="tabpanel" id="panel-rope" aria-labelledby="tab-rope" hidden>
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Query Position i</span><span class="ctrl-val" id="v-qi">10</span></span>
+        <input type="range" id="s-qi" min="0" max="40" step="1" value="10"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Key Position j</span><span class="ctrl-val" id="v-kj">16</span></span>
+        <input type="range" id="s-kj" min="0" max="40" step="1" value="16"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Global Sequence Shift +Δ</span><span class="ctrl-val" id="v-sh">+0</span></span>
+        <input type="range" id="s-sh" min="0" max="60" step="1" value="0"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>2D Complex Rotation Plane (Channel Pair m = 0)</span>
+          <span class="badge" id="rope-sep-badge">j − i = +6</span>
+        </div>
+        <canvas id="c-circle"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Multi-Frequency RoPE Inner Product ⟨R_i q, R_j k⟩ (d_k = 64)</span>
+          <span class="badge ok" id="rope-inv-badge">Shift Diff = 0.00e+00</span>
+        </div>
+        <canvas id="c-ropecurve"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Relative Separation (j − i)</div><div class="kpi-val" id="rk-sep">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Original ⟨R_i q, R_j k⟩</div><div class="kpi-val" id="rk-orig">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Shifted ⟨R_{i+Δ} q, R_{j+Δ} k⟩</div><div class="kpi-val" id="rk-shift">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Absolute Shift Error |Δ|</div><div class="kpi-val" style="color:var(--ok);" id="rk-err">0.00e+00</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => { if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme); });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Exact 16-State 4-Site Potts Solver ----
+    function solvePotts4(Jval, beta) {
+      const h = [0.45, 0.45, 0.45, 0.40];
+      const J = [[0, Jval, 0, 0], [Jval, 0, Jval, 0], [0, Jval, 0, 0], [0, 0, 0, 0]];
+      const states = Array.from({ length: 16 }, (_, m) => [0,1,2,3].map(i => ((m >> i) & 1) ? 1 : -1));
+      const logW = states.map(x => {
+        let E = 0;
+        for (let i = 0; i < 4; i++) E -= h[i] * x[i];
+        E -= Jval * (x[0]*x[1] + x[1]*x[2]);
+        return -beta * E;
+      });
+      const maxLW = Math.max(...logW);
+      const rawW = logW.map(v => Math.exp(v - maxLW));
+      const Z = rawW.reduce((a, b) => a + b, 0);
+      const probs = rawW.map(w => w / Z);
+
+      const MI = Array.from({ length: 4 }, () => [0,0,0,0]);
+      for (let i = 0; i < 4; i++) {
+        for (let j = i + 1; j < 4; j++) {
+          let mi = 0;
+          for (const si of [-1, 1]) {
+            let pi = 0;
+            for (let m = 0; m < 16; m++) if (states[m][i] === si) pi += probs[m];
+            for (const sj of [-1, 1]) {
+              let pj = 0, pij = 0;
+              for (let m = 0; m < 16; m++) {
+                if (states[m][j] === sj) pj += probs[m];
+                if (states[m][i] === si && states[m][j] === sj) pij += probs[m];
+              }
+              if (pij > 1e-15) mi += pij * Math.log(pij / (pi * pj));
+            }
+          }
+          MI[i][j] = MI[j][i] = mi;
+        }
+      }
+      const idxOf = (vec) => vec.reduce((acc, s, i) => acc + (s === 1 ? (1 << i) : 0), 0);
+      const lWT = Math.log(probs[idxOf([1,1,1,1])]);
+      const dsA = Math.log(probs[idxOf([-1,1,1,1])]) - lWT;
+      const dsB = Math.log(probs[idxOf([1,-1,1,1])]) - lWT;
+      const dsAB = Math.log(probs[idxOf([-1,-1,1,1])]) - lWT;
+      const dsAdd = dsA + dsB;
+      return { J, MI, dsA, dsB, dsAB, dsAdd, epi: dsAB - dsAdd };
+    }
+
+    // ---- Exact Multi-Frequency RoPE ----
+    function ropeRotate(vec, pos, base = 10000) {
+      const d = vec.length;
+      const out = new Array(d);
+      for (let m = 0; m < d; m += 2) {
+        const theta = pos * Math.pow(base, -m / d);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        out[m] = vec[m] * c - vec[m + 1] * s;
+        out[m + 1] = vec[m] * s + vec[m + 1] * c;
+      }
+      return out;
+    }
+    function ropeDot(posI, posJ, d = 64) {
+      const u = Array.from({ length: d }, () => 1 / Math.sqrt(d));
+      const rq = ropeRotate(u, posI);
+      const rk = ropeRotate(u, posJ);
+      let s = 0;
+      for (let m = 0; m < d; m++) s += rq[m] * rk[m];
+      return s;
+    }
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    function renderTab1() {
+      const Jval = +$('s-j').value, beta = +$('s-beta').value;
+      $('v-j').textContent = Jval.toFixed(2);
+      $('v-beta').textContent = beta.toFixed(2);
+      const res = solvePotts4(Jval, beta);
+
+      // Left bar chart: Epistasis
+      const c1 = prepCanvas($('c-epi'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 42, pR = 14, pT = 18, pB = 40, pw = W - pL - pR, ph = H - pT - pB;
+        const vals = [res.dsA, res.dsB, res.dsAdd, res.dsAB];
+        const lbls = ['Mut A', 'Mut B', 'PSSM Add', 'Potts AB'];
+        const cols = ['#ea580c', '#ea580c', '#dc2626', '#16a34a'];
+        const minV = Math.min(-2, ...vals) * 1.18, maxV = Math.max(1.2, ...vals) * 1.18;
+        const yOf = (v) => pT + ((maxV - v) / (maxV - minV)) * ph;
+        const y0 = yOf(0);
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(pL, y0); ctx.lineTo(pL + pw, y0); ctx.stroke();
+
+        const bw = pw / 4 * 0.58;
+        vals.forEach((v, i) => {
+          const cx = pL + (i + 0.5) * (pw / 4);
+          const yv = yOf(v);
+          ctx.fillStyle = cols[i];
+          ctx.fillRect(cx - bw / 2, Math.min(y0, yv), bw, Math.abs(yv - y0));
+          ctx.fillStyle = cs.getPropertyValue('--text').trim();
+          ctx.font = 'bold 11px ui-monospace, monospace'; ctx.textAlign = 'center';
+          ctx.fillText(`${v >= 0 ? '+' : ''}${v.toFixed(2)}`, cx, v < 0 ? yv + 13 : yv - 5);
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim();
+          ctx.font = '10.5px system-ui, sans-serif';
+          ctx.fillText(lbls[i], cx, H - 10);
+        });
+        ctx.textAlign = 'left';
+      }
+
+      // Right bar chart: MI vs Direct |J|
+      const c2 = prepCanvas($('c-mi'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 38, pR = 14, pT = 26, pB = 40, pw = W - pL - pR, ph = H - pT - pB;
+        const pairs = [[0,1,'(1,2) Direct'],[1,2,'(2,3) Direct'],[0,2,'(1,3) Indirect'],[0,3,'(1,4) None']];
+        const mis = pairs.map(([i,j]) => res.MI[i][j]);
+        const js = pairs.map(([i,j]) => Math.abs(res.J[i][j]));
+        const maxM = Math.max(0.05, ...mis), maxJ = Math.max(0.05, ...js);
+        const miN = mis.map(v => v / maxM), jN = js.map(v => Jval > 0 ? v / maxJ : 0);
+
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+        const gw = pw / 4, bw = gw * 0.32;
+        pairs.forEach((p, idx) => {
+          const cx = pL + (idx + 0.5) * gw;
+          const h1 = miN[idx] * ph, h2 = jN[idx] * ph;
+          ctx.fillStyle = '#ea580c'; ctx.fillRect(cx - bw - 2, pT + ph - h1, bw, h1);
+          ctx.fillStyle = '#2563eb'; ctx.fillRect(cx + 2, pT + ph - h2, bw, h2);
+          ctx.fillStyle = cs.getPropertyValue('--text').trim(); ctx.font = 'bold 10px ui-monospace, monospace'; ctx.textAlign = 'center';
+          ctx.fillText(mis[idx].toFixed(2), cx - bw/2 - 2, pT + ph - h1 - 4);
+          ctx.fillText(js[idx].toFixed(1), cx + bw/2 + 2, pT + ph - h2 - 4);
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+          ctx.fillText(p[2], cx, H - 10);
+        });
+        ctx.textAlign = 'left'; ctx.font = 'bold 10.5px system-ui, sans-serif';
+        ctx.fillStyle = '#ea580c'; ctx.fillText('■ Mutual Info MI_ij (nats)', pL + 4, 15);
+        ctx.fillStyle = '#2563eb'; ctx.fillText('■ Potts Direct |J_ij|', pL + 165, 15);
+      }
+
+      $('pk-a').textContent = `${res.dsA >= 0 ? '+' : ''}${res.dsA.toFixed(2)}`;
+      $('pk-add').textContent = `${res.dsAdd >= 0 ? '+' : ''}${res.dsAdd.toFixed(2)}`;
+      $('pk-ab').textContent = `${res.dsAB >= 0 ? '+' : ''}${res.dsAB.toFixed(2)}`;
+      $('pk-epi').textContent = `${res.epi >= 0 ? '+' : ''}${res.epi.toFixed(2)}`;
+      $('pk-epi').style.color = Math.abs(res.epi) > 0.05 ? 'var(--ok)' : 'var(--muted)';
+      $('epi-badge').textContent = `ΔΔs_epi = ${res.epi >= 0 ? '+' : ''}${res.epi.toFixed(2)}`;
+      $('mi-badge').textContent = `Indirect (1,3) MI = ${res.MI[0][2].toFixed(3)} (J₁₃=0)`;
+    }
+
+    function renderTab2() {
+      const qi = +$('s-qi').value, kj = +$('s-kj').value, sh = +$('s-sh').value;
+      $('v-qi').textContent = String(qi); $('v-kj').textContent = String(kj); $('v-sh').textContent = `+${sh}`;
+      const sep = kj - qi;
+      const origDot = ropeDot(qi, kj, 64);
+      const shiftDot = ropeDot(qi + sh, kj + sh, 64);
+      const err = Math.abs(origDot - shiftDot);
+
+      // Left: 2D Complex Plane Circle (m=0, angular freq 0.25 rad/pos for visual clarity)
+      const c1 = prepCanvas($('c-circle'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.36;
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - R - 14, cy); ctx.lineTo(cx + R + 14, cy); ctx.moveTo(cx, cy - R - 14); ctx.lineTo(cx, cy + R + 14); ctx.stroke();
+
+        const omega = 0.28;
+        const drawVec = (pos, col, lbl, dashed = false) => {
+          const ang = pos * omega;
+          const vx = cx + R * Math.cos(ang), vy = cy - R * Math.sin(ang);
+          ctx.save(); if (dashed) ctx.setLineDash([5, 3]);
+          ctx.strokeStyle = col; ctx.lineWidth = dashed ? 2.0 : 2.8;
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(vx, vy); ctx.stroke(); ctx.restore();
+          ctx.fillStyle = col; ctx.beginPath(); ctx.arc(vx, vy, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.font = 'bold 11px system-ui, sans-serif';
+          ctx.fillText(lbl, vx + (vx >= cx ? 6 : -48), vy + (vy >= cy ? 14 : -6));
+        };
+        if (sh > 0) {
+          drawVec(qi, 'rgba(37,99,235,0.45)', `R_${qi} q`, true);
+          drawVec(kj, 'rgba(234,88,12,0.45)', `R_${kj} k`, true);
+        }
+        drawVec(qi + sh, '#2563eb', `R_${qi+sh} q`);
+        drawVec(kj + sh, '#ea580c', `R_${kj+sh} k`);
+
+        // Angle arc between shifted q and k
+        const a1 = -(qi + sh) * omega, a2 = -(kj + sh) * omega;
+        ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.arc(cx, cy, R * 0.34, Math.min(a1, a2), Math.max(a1, a2)); ctx.stroke();
+        ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 11px ui-monospace, monospace';
+        ctx.fillText(`Δθ = (j−i)ω = ${(sep * omega).toFixed(2)} rad`, 10, 18);
+      }
+
+      // Right: Multi-frequency inner product curve
+      const c2 = prepCanvas($('c-ropecurve'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 38, pR = 14, pT = 18, pB = 30, pw = W - pL - pR, ph = H - pT - pB;
+        const xOf = (s) => pL + ((s + 30) / 60) * pw;
+        const yOf = (v) => pT + ((1.12 - v) / 1.25) * ph;
+
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+        ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        for (let s = -30; s <= 30; s++) {
+          const v = ropeDot(qi + sh, qi + sh + s, 64);
+          s === -30 ? ctx.moveTo(xOf(s), yOf(v)) : ctx.lineTo(xOf(s), yOf(v));
+        }
+        ctx.stroke();
+
+        const clampedSep = Math.max(-30, Math.min(30, sep));
+        const px = xOf(clampedSep), py = yOf(shiftDot);
+        ctx.fillStyle = '#ea580c'; ctx.beginPath(); ctx.arc(px, py, 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('−30', pL, H - 10); ctx.fillText('Relative Separation (j − i)', pL + pw/2 - 58, H - 10); ctx.fillText('+30', pL + pw - 20, H - 10);
+      }
+
+      $('rope-sep-badge').textContent = `j − i = ${sep >= 0 ? '+' : ''}${sep}`;
+      $('rope-inv-badge').textContent = `Shift Diff = ${err.toExponential(2)}`;
+      $('rk-sep').textContent = `${sep >= 0 ? '+' : ''}${sep} residues`;
+      $('rk-orig').textContent = origDot.toFixed(6);
+      $('rk-shift').textContent = shiftDot.toFixed(6);
+      $('rk-err').textContent = err.toExponential(2);
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+    ['s-j', 's-beta'].forEach(id => $(id).addEventListener('input', renderTab1));
+    $('p-pssm').addEventListener('click', () => { $('s-j').value = 0; $('p-pssm').classList.add('active'); $('p-potts').classList.remove('active'); renderTab1(); });
+    $('p-potts').addEventListener('click', () => { $('s-j').value = 1.8; $('p-potts').classList.add('active'); $('p-pssm').classList.remove('active'); renderTab1(); });
+    ['s-qi', 's-kj', 's-sh'].forEach(id => $(id).addEventListener('input', renderTab2));
+    new ResizeObserver(renderAll).observe($('c-epi'));
+    renderAll();
+  </script>
+</body>
+</html>
+
