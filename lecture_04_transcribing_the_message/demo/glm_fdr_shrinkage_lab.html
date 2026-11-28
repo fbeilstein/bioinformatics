@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compositional Normalization, BH FDR &amp; apeGLM Shrinkage Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface2: #0b1220;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #60a5fa;
+        --accent2: #a78bfa;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #0b1220;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #60a5fa;
+      --accent2: #a78bfa;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.38;
+    }
+    .tablist {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    [role="tab"] {
+      position: relative;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 7px 14px 9px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: -1px;
+      border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 9px; align-items: center; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    input[type="range"] { width: 100%; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .card-title {
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 700; font-size: 12.8px; margin-bottom: 7px;
+    }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    .table-wrapper {
+      overflow: auto;
+      max-height: 240px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+    }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 4px 7px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { position: sticky; top: 0; background: var(--surface2); font-weight: 700; color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+
+    canvas { width: 100%; height: 225px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .chk-box {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+      padding: 6px 10px; font-weight: 600; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Compositional bias and FDR shrinkage labs">
+    <button type="button" role="tab" id="tab-norm" aria-selected="true">1. Compositional Bias: CPM vs. Median-of-Ratios</button>
+    <button type="button" role="tab" id="tab-fdr" aria-selected="false">2. BH FDR, Independent Filtering &amp; apeGLM Shrinkage</button>
+  </div>
+
+  <!-- TAB 1: Compositional Bias -->
+  <div role="tabpanel" id="panel-norm" aria-labelledby="tab-norm">
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Chaperone induction (2 genes)</span><span class="ctrl-val" id="v-chap">30×</span></span>
+        <input type="range" id="s-chap" min="1" max="80" step="1" value="30"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Ribosomal repression (1 gene)</span><span class="ctrl-val" id="v-ribo">1.0×</span></span>
+        <input type="range" id="s-ribo" min="0.15" max="1.0" step="0.05" value="1.0"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>HS / WT Sequencing Depth</span><span class="ctrl-val" id="v-depth">1.00×</span></span>
+        <input type="range" id="s-depth" min="0.5" max="2.0" step="0.05" value="1.0"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Apparent log₂FC: CPM Scaling vs. DESeq2 MoR</span>
+          <span class="badge bad" id="cpm-bias-badge">CPM bias: —</span>
+        </div>
+        <canvas id="comp-canvas"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>12-Gene Transcriptome &amp; Geometric-Mean Ratios</span>
+          <span class="badge ok" id="mor-sf-badge">s_HS / s_WT = —</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="Transcriptome normalization table">
+          <table>
+            <thead>
+              <tr>
+                <th>Gene (True FC)</th>
+                <th class="num">WT Raw</th>
+                <th class="num">HS Raw</th>
+                <th class="num">CPM log₂FC</th>
+                <th class="num">MoR log₂FC</th>
+              </tr>
+            </thead>
+            <tbody id="comp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Chaperone Library Share (HS)</div><div class="kpi-val" id="k-share">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Total-Library Ratio (HS/WT)</div><div class="kpi-val" id="k-lib">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Median-of-Ratios (s_HS/s_WT)</div><div class="kpi-val" id="k-mor" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Housekeeping Apparent log₂FC (CPM)</div><div class="kpi-val" id="k-hk" style="color:var(--bad);">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: BH FDR + Independent Filtering + apeGLM -->
+  <div role="tabpanel" id="panel-fdr" aria-labelledby="tab-fdr" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>FDR Cutoff q (padj &lt; q)</span><span class="ctrl-val" id="v-q">0.05</span></span>
+        <input type="range" id="s-q" min="0.01" max="0.20" step="0.01" value="0.05"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Independent Filter baseMean τ</span><span class="ctrl-val" id="v-tau">8</span></span>
+        <input type="range" id="s-tau" min="0" max="40" step="1" value="8"></label>
+      <label class="chk-box">
+        <input type="checkbox" id="chk-shrink" checked>
+        <span>Apply apeGLM Cauchy LFC Shrinkage (MA Plot)</span>
+      </label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Benjamini–Hochberg Step-Up &amp; Independent Filtering</span>
+          <span class="badge ok" id="fdr-gain-badge">+0 discoveries</span>
+        </div>
+        <canvas id="bh-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>MA Plot Funnel (400 Genes: Raw vs. apeGLM Shrunk)</span>
+          <span class="badge" id="ma-mode-badge">Shrunk LFC</span>
+        </div>
+        <canvas id="ma-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Tested Genes m (baseMean ≥ τ)</div><div class="kpi-val" id="k-m">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Filtered (padj = NaN)</div><div class="kpi-val" id="k-nan">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">BH Discoveries R (unfiltered → filtered)</div><div class="kpi-val" id="k-r" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Realized Empirical FDP (V / R)</div><div class="kpi-val" id="k-fdp">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderComp();
+      renderFDR();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderComp(); else renderFDR(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Exact Median-of-Ratios Size Factors (DESeq2) ----
+    function medianOfRatios(rows) {
+      // rows: array of [k_wt, k_hs]
+      const m = rows[0].length;
+      const valid = rows.filter(r => r.every(v => v > 0));
+      const logGeo = valid.map(r => r.reduce((s, v) => s + Math.log(v), 0) / m);
+      const s = [];
+      for (let j = 0; j < m; j++) {
+        const ratios = valid.map((r, i) => Math.exp(Math.log(r[j]) - logGeo[i])).sort((a, b) => a - b);
+        const mid = Math.floor(ratios.length / 2);
+        s.push(ratios.length % 2 ? ratios[mid] : 0.5 * (ratios[mid - 1] + ratios[mid]));
+      }
+      return s;
+    }
+
+    const BASE_GENES = [
+      { name: 'HSP104 (Chaperone)', baseMol: 160, role: 'chap' },
+      { name: 'SSA1 (Chaperone)',   baseMol: 240, role: 'chap' },
+      { name: 'RPL3 (Ribosomal)',   baseMol: 3200, role: 'ribo' },
+      { name: 'ACT1 (Housekeeping)',baseMol: 1000, role: 'hk' },
+      { name: 'TDH3 (Housekeeping)',baseMol: 1200, role: 'hk' },
+      { name: 'PGK1 (Housekeeping)',baseMol: 900,  role: 'hk' },
+      { name: 'YDR130C (Unchanged)',baseMol: 800,  role: 'hk' },
+      { name: 'TUB1 (Housekeeping)',baseMol: 750,  role: 'hk' },
+      { name: 'UBC6 (Housekeeping)',baseMol: 650,  role: 'hk' },
+      { name: 'ALG9 (Housekeeping)',baseMol: 550,  role: 'hk' },
+      { name: 'TAF10 (Housekeeping)',baseMol: 500, role: 'hk' },
+      { name: 'TFC1 (Housekeeping)',baseMol: 450,  role: 'hk' },
+    ];
+
+    function simulateCompositional(chapFC, riboFC, depthRatio) {
+      const wtMols = BASE_GENES.map(g => g.baseMol);
+      const hsMols = BASE_GENES.map(g => g.role === 'chap' ? g.baseMol * chapFC : (g.role === 'ribo' ? g.baseMol * riboFC : g.baseMol));
+      const wtTotMol = wtMols.reduce((a, b) => a + b, 0);
+      const hsTotMol = hsMols.reduce((a, b) => a + b, 0);
+      const libWT = 100000;
+      const libHS = Math.round(100000 * depthRatio);
+
+      const wtRaw = wtMols.map(m => Math.max(1, Math.round((m / wtTotMol) * libWT)));
+      const hsRaw = hsMols.map(m => Math.max(1, Math.round((m / hsTotMol) * libHS)));
+      const rows = wtRaw.map((w, i) => [w, hsRaw[i]]);
+
+      const sumWT = wtRaw.reduce((a, b) => a + b, 0);
+      const sumHS = hsRaw.reduce((a, b) => a + b, 0);
+      const [sWT, sHS] = medianOfRatios(rows);
+
+      const genes = BASE_GENES.map((g, i) => {
+        const cpmWT = (wtRaw[i] / sumWT) * 1e6;
+        const cpmHS = (hsRaw[i] / sumHS) * 1e6;
+        const morWT = wtRaw[i] / sWT;
+        const morHS = hsRaw[i] / sHS;
+        return {
+          ...g,
+          trueFC: g.role === 'chap' ? chapFC : (g.role === 'ribo' ? riboFC : 1),
+          wtRaw: wtRaw[i],
+          hsRaw: hsRaw[i],
+          lfcCPM: Math.log2(cpmHS / cpmWT),
+          lfcMoR: Math.log2(morHS / morWT),
+        };
+      });
+      const chapShare = (hsRaw[0] + hsRaw[1]) / sumHS;
+      return { genes, sumWT, sumHS, sWT, sHS, chapShare };
+    }
+
+    // ---- Exact Benjamini-Hochberg Step-Up + Cauchy apeGLM LFC Shrinkage ----
+    function benjaminiHochberg(pvals) {
+      const m = pvals.length;
+      if (m === 0) return [];
+      const order = pvals.map((p, idx) => ({ p, idx })).sort((a, b) => a.p - b.p);
+      const padj = new Array(m);
+      let runningMin = 1.0;
+      for (let i = m - 1; i >= 0; i--) {
+        const rank = i + 1;
+        const val = (m * order[i].p) / rank;
+        if (val < runningMin) runningMin = val;
+        padj[order[i].idx] = Math.min(1.0, runningMin);
+      }
+      return padj;
+    }
+
+    // Exact 1D MAP mode under Gaussian likelihood N(rawLfc, se^2) and Cauchy(0, sPrior) prior
+    // Minimizes J(b) = (b - rawLfc)^2 / (2*se^2) + ln(1 + b^2 / sPrior^2)
+    function shrinkLfcCauchy(rawLfc, se, sPrior = 0.70) {
+      if (se <= 1e-9 || Math.abs(rawLfc) < 1e-12) return rawLfc;
+      const obj = (b) => 0.5 * Math.pow((b - rawLfc) / se, 2) + Math.log(1 + (b * b) / (sPrior * sPrior));
+      const grad = (b) => (b - rawLfc) / (se * se) + (2 * b) / (sPrior * sPrior + b * b);
+      const hess = (b) => 1 / (se * se) + (2 * (sPrior * sPrior - b * b)) / Math.pow(sPrior * sPrior + b * b, 2);
+
+      // Coarse grid search between 0 and rawLfc to guarantee global minimum (Cauchy can be bimodal!)
+      let bestB = 0, bestJ = obj(0);
+      const steps = 40;
+      for (let i = 1; i <= steps; i++) {
+        const b = rawLfc * (i / steps);
+        const j = obj(b);
+        if (j < bestJ) { bestJ = j; bestB = b; }
+      }
+      // Polish with damped Newton steps
+      let b = bestB;
+      for (let it = 0; it < 8; it++) {
+        const g = grad(b), h = hess(b);
+        if (h <= 1e-9) break;
+        const step = g / h;
+        const cand = b - step;
+        if (obj(cand) <= obj(b)) b = cand;
+        if (Math.abs(step) < 1e-10) break;
+      }
+      return b;
+    }
+
+    // Deterministic synthetic 400-gene screen (using seeded Mulberry32 + Box-Muller + exact normal CDF)
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function erfcApprox(x) {
+      // Abramowitz & Stegun 7.1.26 (max err 1.5e-7)
+      const ax = Math.abs(x);
+      const t = 1 / (1 + 0.3275911 * ax);
+      const poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+      const r = poly * Math.exp(-ax * ax);
+      return x >= 0 ? r : 2 - r;
+    }
+    function twoSidedP(z) {
+      return Math.max(1e-300, erfcApprox(Math.abs(z) / Math.SQRT2));
+    }
+
+    const SCREEN_GENES = (() => {
+      const rand = mulberry32(4042026);
+      const randn = () => {
+        const u1 = Math.max(1e-12, rand()), u2 = rand();
+        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      };
+      const arr = [];
+      // 150 ultra-low-count null genes (baseMean 1..7)
+      for (let i = 0; i < 150; i++) {
+        const bm = Math.pow(10, 0.05 + rand() * 0.80);
+        const se = Math.sqrt((2 / 3) * (1.8 / bm + 0.03));
+        const rawLfc = randn() * se;
+        arr.push({ bm, se, rawLfc, shrunkLfc: shrinkLfcCauchy(rawLfc, se), p: twoSidedP(rawLfc / se), isDE: false });
+      }
+      // 160 expressed null genes (baseMean 8..30000)
+      for (let i = 0; i < 160; i++) {
+        const bm = Math.pow(10, 0.92 + rand() * 3.5);
+        const se = Math.sqrt((2 / 3) * (1.5 / bm + 0.02));
+        const rawLfc = randn() * se;
+        arr.push({ bm, se, rawLfc, shrunkLfc: shrinkLfcCauchy(rawLfc, se), p: twoSidedP(rawLfc / se), isDE: false });
+      }
+      // 90 true DE genes (expressed, baseMean 15..50000)
+      for (let i = 0; i < 90; i++) {
+        const bm = Math.pow(10, 1.18 + rand() * 3.4);
+        const se = Math.sqrt((2 / 3) * (1.5 / bm + 0.02));
+        const trueLfc = (rand() < 0.6 ? 1 : -1) * (0.75 + rand() * 3.2);
+        const rawLfc = trueLfc + randn() * se;
+        arr.push({ bm, se, rawLfc, shrunkLfc: shrinkLfcCauchy(rawLfc, se), p: twoSidedP(rawLfc / se), isDE: true });
+      }
+      return arr;
+    })();
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function renderComp() {
+      const chapFC = +$('s-chap').value;
+      const riboFC = +$('s-ribo').value;
+      const depth = +$('s-depth').value;
+      $('v-chap').textContent = `${chapFC}×`;
+      $('v-ribo').textContent = `${riboFC.toFixed(2)}×`;
+      $('v-depth').textContent = `${depth.toFixed(2)}×`;
+
+      const sim = simulateCompositional(chapFC, riboFC, depth);
+      const hkSample = sim.genes.find(g => g.role === 'hk');
+      $('k-share').textContent = `${(sim.chapShare * 100).toFixed(1)}%`;
+      $('k-lib').textContent = (sim.sumHS / sim.sumWT).toFixed(3);
+      $('k-mor').textContent = (sim.sHS / sim.sWT).toFixed(3);
+      $('k-hk').textContent = (hkSample.lfcCPM >= 0 ? '+' : '') + hkSample.lfcCPM.toFixed(2);
+      $('cpm-bias-badge').textContent = `CPM HK bias: ${(hkSample.lfcCPM >= 0 ? '+' : '') + hkSample.lfcCPM.toFixed(2)}`;
+      $('mor-sf-badge').textContent = `s_HS/s_WT = ${(sim.sHS / sim.sWT).toFixed(3)}`;
+
+      $('comp-tbody').innerHTML = sim.genes.map(g => `
+        <tr>
+          <td><strong>${g.name.split(' ')[0]}</strong> <span style="color:var(--muted);">(${g.trueFC.toFixed(1)}×)</span></td>
+          <td class="num">${g.wtRaw.toLocaleString()}</td>
+          <td class="num">${g.hsRaw.toLocaleString()}</td>
+          <td class="num" style="color:${g.role === 'hk' && Math.abs(g.lfcCPM) > 0.15 ? 'var(--bad)' : 'var(--text)'};font-weight:700;">${g.lfcCPM.toFixed(2)}</td>
+          <td class="num" style="color:${g.role === 'hk' ? 'var(--ok)' : 'var(--accent)'};font-weight:700;">${g.lfcMoR.toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      // Draw bar chart for first 6 representative genes (2 chap, 1 ribo, 3 HK)
+      const c = prepCanvas($('comp-canvas'));
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cText = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+
+      const show = [sim.genes[0], sim.genes[2], sim.genes[3], sim.genes[4], sim.genes[5], sim.genes[6]];
+      const pL = 62, pR = 16, pT = 22, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+      const maxAbs = Math.max(2.0, ...show.map(g => Math.max(Math.abs(g.lfcCPM), Math.abs(g.lfcMoR)))) * 1.1;
+      const xOf = (v) => pL + ((v + maxAbs) / (2 * maxAbs)) * pw;
+      const x0 = xOf(0);
+
+      ctx.strokeStyle = cBorder; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, pT); ctx.lineTo(x0, pT + ph); ctx.stroke();
+
+      const rowH = ph / show.length;
+      show.forEach((g, i) => {
+        const yc = pT + (i + 0.5) * rowH;
+        const bh = Math.min(10, rowH * 0.34);
+        // CPM bar
+        const xC = xOf(g.lfcCPM);
+        ctx.fillStyle = cBad;
+        ctx.fillRect(Math.min(x0, xC), yc - bh - 1, Math.abs(xC - x0), bh);
+        // MoR bar
+        const xM = xOf(g.lfcMoR);
+        ctx.fillStyle = cOk;
+        ctx.fillRect(Math.min(x0, xM), yc + 1, Math.abs(xM - x0), bh);
+
+        ctx.fillStyle = cText; ctx.font = 'bold 10.5px ui-monospace, monospace';
+        ctx.fillText(g.name.split(' ')[0], 6, yc + 3);
+      });
+
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      ctx.fillText((-maxAbs).toFixed(1), pL, H - 7);
+      ctx.fillText('0 (no change)', x0 - 28, H - 7);
+      ctx.fillText('+' + maxAbs.toFixed(1), pL + pw - 24, H - 7);
+      ctx.font = 'bold 10.5px system-ui, sans-serif';
+      ctx.fillStyle = cBad; ctx.fillText('■ CPM (library-sum)', pL + 4, 13);
+      ctx.fillStyle = cOk;  ctx.fillText('■ DESeq2 Median-of-Ratios', pL + 135, 13);
+    }
+
+    function renderFDR() {
+      const q = +$('s-q').value;
+      const tau = +$('s-tau').value;
+      const doShrink = $('chk-shrink').checked;
+      $('v-q').textContent = q.toFixed(2);
+      $('v-tau').textContent = tau;
+      $('ma-mode-badge').textContent = doShrink ? 'apeGLM Shrunk LFC' : 'Raw MLE LFC';
+
+      // Unfiltered BH
+      const padjAll = benjaminiHochberg(SCREEN_GENES.map(g => g.p));
+      const rAll = padjAll.filter(v => v < q).length;
+
+      // Filtered BH
+      const keptIdx = [];
+      SCREEN_GENES.forEach((g, idx) => { if (g.bm >= tau) keptIdx.push(idx); });
+      const padjKept = benjaminiHochberg(keptIdx.map(idx => SCREEN_GENES[idx].p));
+      const padjFull = new Array(SCREEN_GENES.length).fill(NaN);
+      keptIdx.forEach((origIdx, k) => { padjFull[origIdx] = padjKept[k]; });
+
+      let rFilt = 0, falseDisc = 0;
+      keptIdx.forEach((origIdx, k) => {
+        if (padjKept[k] < q) {
+          rFilt++;
+          if (!SCREEN_GENES[origIdx].isDE) falseDisc++;
+        }
+      });
+
+      $('k-m').textContent = `${keptIdx.length} / ${SCREEN_GENES.length}`;
+      $('k-nan').textContent = SCREEN_GENES.length - keptIdx.length;
+      $('k-r').textContent = `${rAll} → ${rFilt}`;
+      $('k-fdp').textContent = rFilt > 0 ? `${((falseDisc / rFilt) * 100).toFixed(1)}%` : '0.0%';
+      const gain = rFilt - rAll;
+      $('fdr-gain-badge').textContent = `${gain >= 0 ? '+' : ''}${gain} discoveries`;
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cText = cs.getPropertyValue('--text').trim();
+
+      // 1. BH step-up canvas
+      const c1 = prepCanvas($('bh-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const pL = 44, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const pSortedAll = SCREEN_GENES.map(g => g.p).sort((a, b) => a - b);
+        const pSortedFilt = keptIdx.map(i => SCREEN_GENES[i].p).sort((a, b) => a - b);
+        const kMax = Math.min(130, pSortedFilt.length);
+        const yMax = Math.max(0.03, (kMax / Math.max(1, keptIdx.length)) * q * 1.1);
+        const xOf = (k) => pL + ((k - 1) / Math.max(1, kMax - 1)) * pw;
+        const yOf = (y) => pT + ph - (Math.min(yMax, y) / yMax) * ph;
+
+        // Unfiltered BH line (red dashed)
+        ctx.save(); ctx.strokeStyle = cBad; ctx.lineWidth = 1.8; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(xOf(1), yOf((1 / SCREEN_GENES.length) * q));
+        ctx.lineTo(xOf(kMax), yOf((kMax / SCREEN_GENES.length) * q)); ctx.stroke(); ctx.restore();
+
+        // Filtered BH line (green solid)
+        if (keptIdx.length > 0) {
+          ctx.strokeStyle = cOk; ctx.lineWidth = 2.2;
+          ctx.beginPath(); ctx.moveTo(xOf(1), yOf((1 / keptIdx.length) * q));
+          ctx.lineTo(xOf(kMax), yOf((kMax / keptIdx.length) * q)); ctx.stroke();
+        }
+
+        // Sorted p-values (filtered)
+        ctx.strokeStyle = cText; ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        for (let k = 1; k <= kMax; k++) {
+          const px = xOf(k), py = yOf(pSortedFilt[k - 1]);
+          if (k === 1) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        // Cutoff dots
+        if (rAll >= 1 && rAll <= kMax) {
+          ctx.fillStyle = cBad; ctx.beginPath(); ctx.arc(xOf(rAll), yOf(pSortedAll[rAll - 1]), 4.5, 0, Math.PI * 2); ctx.fill();
+        }
+        if (rFilt >= 1 && rFilt <= kMax) {
+          ctx.fillStyle = cOk; ctx.beginPath(); ctx.arc(xOf(rFilt), yOf(pSortedFilt[rFilt - 1]), 4.5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = cOk; ctx.fillText(`— Filtered BH (m=${keptIdx.length})`, pL + 6, pT + 11);
+        ctx.fillStyle = cBad; ctx.fillText(`--- Unfiltered BH (m=${SCREEN_GENES.length})`, pL + 6, pT + 24);
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Rank k', pL + pw / 2 - 14, H - 7);
+        ctx.fillText(yMax.toFixed(3), 4, pT + 8);
+        ctx.fillText('0', 28, pT + ph + 3);
+      }
+
+      // 2. MA plot canvas
+      const c2 = prepCanvas($('ma-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 40, pR = 12, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xMin = 0, xMax = 4.7, yMin = -4.8, yMax = 4.8;
+        const xOf = (l10) => pL + ((l10 - xMin) / (xMax - xMin)) * pw;
+        const yOf = (y) => pT + ph - ((Math.max(yMin, Math.min(yMax, y)) - yMin) / (yMax - yMin)) * ph;
+
+        // Zero line & filter tau vertical line
+        ctx.save(); ctx.strokeStyle = cBorder; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(pL, yOf(0)); ctx.lineTo(pL + pw, yOf(0)); ctx.stroke();
+        if (tau > 0) {
+          const xt = xOf(Math.log10(tau));
+          ctx.strokeStyle = cBad;
+          ctx.beginPath(); ctx.moveTo(xt, pT); ctx.lineTo(xt, pT + ph); ctx.stroke();
+        }
+        ctx.restore();
+
+        SCREEN_GENES.forEach((g, idx) => {
+          const px = xOf(Math.log10(g.bm));
+          const val = doShrink ? g.shrunkLfc : g.rawLfc;
+          const py = yOf(val);
+          const sig = !Number.isNaN(padjFull[idx]) && padjFull[idx] < q;
+          ctx.fillStyle = g.bm < tau ? (cMuted + '44') : (sig ? cAcc : (cMuted + '99'));
+          ctx.beginPath(); ctx.arc(px, py, sig ? 2.7 : 2.1, 0, Math.PI * 2); ctx.fill();
+        });
+
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('log₁₀(baseMean)', pL + pw / 2 - 36, H - 7);
+        ctx.fillText('+4', 14, yOf(4) + 3);
+        ctx.fillText('0', 22, yOf(0) + 3);
+        ctx.fillText('-4', 14, yOf(-4) + 3);
+        if (tau > 0) {
+          ctx.fillStyle = cBad; ctx.font = 'bold 10px ui-monospace, monospace';
+          ctx.fillText(`τ=${tau}`, xOf(Math.log10(tau)) + 3, pT + 11);
+        }
+      }
+    }
+
+    ['s-chap', 's-ribo', 's-depth'].forEach(id => $(id).addEventListener('input', renderComp));
+    ['s-q', 's-tau', 'chk-shrink'].forEach(id => $(id).addEventListener('input', renderFDR));
+    new ResizeObserver(() => { renderComp(); renderFDR(); }).observe($('comp-canvas'));
+    renderComp();
+    renderFDR();
+  </script>
+</body>
+</html>
+

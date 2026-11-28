@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Negative Binomial &amp; Empirical Bayes Dispersion Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface2: #0b1220;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #60a5fa;
+        --accent2: #a78bfa;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #0b1220;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #60a5fa;
+      --accent2: #a78bfa;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.38;
+    }
+    .tablist {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    [role="tab"] {
+      position: relative;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 7px 14px 9px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: -1px;
+      border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 9px; }
+    .btn {
+      appearance: none;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; }
+    .ctrl-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1.25fr; gap: 12px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .card-title {
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 700; font-size: 12.8px; margin-bottom: 6px;
+    }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+
+    canvas { width: 100%; height: 215px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Negative Binomial and Empirical Bayes labs">
+    <button type="button" role="tab" id="tab-nb" aria-selected="true">1. Gamma–Poisson Mixture &amp; scipy.stats.nbinom</button>
+    <button type="button" role="tab" id="tab-eb" aria-selected="false">2. Empirical Bayes MAP Dispersion Shrinkage</button>
+  </div>
+
+  <!-- TAB 1: Gamma-Poisson & NB -->
+  <div role="tabpanel" id="panel-nb" aria-labelledby="tab-nb">
+    <div class="bar">
+      <span style="font-weight:700; color:var(--muted);">Presets:</span>
+      <button type="button" class="btn active" data-nb="part4">Part 4 Worked (μ=500, α=0.02, k*=650)</button>
+      <button type="button" class="btn" data-nb="tech">Technical Rep (α=0)</button>
+      <button type="button" class="btn" data-nb="high">High-Count Yeast (μ=1000, α=0.015)</button>
+      <button type="button" class="btn" data-nb="low">Low-Count Gene (μ=12, α=0.40)</button>
+    </div>
+
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Mean count μ</span><span class="ctrl-val" id="v-mu">500</span></span>
+        <input type="range" id="s-mu" min="5" max="1200" step="5" value="500"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Dispersion α (Bio CV²)</span><span class="ctrl-val" id="v-alpha">0.020</span></span>
+        <input type="range" id="s-alpha" min="0" max="0.5" step="0.005" value="0.02"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Tail cutoff k* (fraction of μ)</span><span class="ctrl-val" id="v-kstar">650 (1.30×μ)</span></span>
+        <input type="range" id="s-kmult" min="1.05" max="2.20" step="0.05" value="1.30"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Latent Biological Rate Λ ~ Gamma(1/α, 1/(αμ))</span>
+          <span class="badge" id="gamma-cv-badge">Bio CV = 14.1%</span>
+        </div>
+        <canvas id="gamma-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Observed Count K: Poisson vs. NB(μ, α)</span>
+          <span class="badge warn" id="nb-ratio-badge">Var/μ = 11.0×</span>
+        </div>
+        <canvas id="nb-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">scipy n = 1/α</div><div class="kpi-val" id="k-n">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">scipy p = n/(n+μ)</div><div class="kpi-val" id="k-p">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">NB Var = μ + αμ²</div><div class="kpi-val" id="k-var">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Poisson P(K ≥ k*)</div><div class="kpi-val" id="k-ppois" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">NB P(K ≥ k*)</div><div class="kpi-val" id="k-pnb" style="color:var(--ok);">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Empirical Bayes MAP Shrinkage -->
+  <div role="tabpanel" id="panel-eb" aria-labelledby="tab-eb" hidden>
+    <div class="bar">
+      <span style="font-weight:700; color:var(--muted);">GSE135568 Presets:</span>
+      <button type="button" class="btn active" data-eb="ydr">YDR130C (Pulled UP: 0.0058 → ~0.015)</button>
+      <button type="button" class="btn" data-eb="hsp">HSP104 (High Count: 0.0490 → ~0.029)</button>
+      <button type="button" class="btn" data-eb="yil">YIL100W (Low Count: μ̄=5, Flat Lik.)</button>
+      <button type="button" class="btn" data-eb="lowflat">Low-Count Trap (μ̄=10, α_MLE=0.004)</button>
+      <button type="button" class="btn" data-eb="outlier">Dispersion Outlier (&gt; +2σ_d Rule)</button>
+    </div>
+
+    <div class="ctrl-row-4">
+      <label class="ctrl"><span class="ctrl-top"><span>log₁₀(baseMean μ̄)</span><span class="ctrl-val" id="v-eb-mu">2.50 (μ̄=316)</span></span>
+        <input type="range" id="s-eb-mu" min="0.7" max="4.7" step="0.05" value="2.50"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Replicates / group (n)</span><span class="ctrl-val" id="v-eb-rep">3</span></span>
+        <input type="range" id="s-eb-rep" min="2" max="12" step="1" value="3"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>log₁₀(gene-wise α_MLE)</span><span class="ctrl-val" id="v-eb-mle">0.0058</span></span>
+        <input type="range" id="s-eb-mle" min="-3.0" max="0.0" step="0.04" value="-2.24"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Prior variance σ_d²</span><span class="ctrl-val" id="v-eb-pvar">0.51</span></span>
+        <input type="range" id="s-eb-pvar" min="0.10" max="1.50" step="0.05" value="0.51"></label>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>Cox–Reid Log-Likelihood ℓ_CR(α) + Log-Normal Prior → MAP Posterior Mode</span>
+        <span class="badge ok" id="eb-status">Shrunk Toward Trend</span>
+      </div>
+      <canvas id="eb-canvas" style="height:225px;"></canvas>
+    </div>
+
+    <div class="kpi-grid-4">
+      <div class="kpi"><div class="kpi-lbl">Trend α_tr = 0.0137 + 3.03/μ̄</div><div class="kpi-val" id="k-eb-tr">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Gene-wise α_MLE</div><div class="kpi-val" id="k-eb-mle">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">MAP α_MAP</div><div class="kpi-val" id="k-eb-map" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Final DESeq2 α</div><div class="kpi-val" id="k-eb-fin" style="color:var(--accent2);">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderNB();
+      renderEB();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderNB(); else renderEB(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Exact Lanczos logGamma (float64 accuracy ~1e-15) ----
+    const LANCZOS_P = [
+      676.5203681218851, -1259.1392167224028, 771.32342877765313,
+      -176.61502916214059, 12.507343278686905, -0.13857109526572012,
+      9.9843695780195716e-6, 1.5056327351493116e-7
+    ];
+    function logGamma(z) {
+      if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
+      z -= 1;
+      let x = 0.99999999999980993;
+      for (let i = 0; i < LANCZOS_P.length; i++) x += LANCZOS_P[i] / (z + i + 1);
+      const t = z + LANCZOS_P.length - 0.5;
+      return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+    }
+
+    function poissonPMF(k, mu) {
+      if (k < 0) return 0;
+      return Math.exp(k * Math.log(mu) - mu - logGamma(k + 1));
+    }
+
+    function nbPMF(k, mu, alpha) {
+      if (k < 0) return 0;
+      if (alpha <= 1e-9) return poissonPMF(k, mu);
+      const n = 1 / alpha;
+      const p = n / (n + mu);
+      return Math.exp(
+        logGamma(k + n) - logGamma(n) - logGamma(k + 1)
+        + n * Math.log(p) + k * Math.log(1 - p)
+      );
+    }
+
+    function gammaPDF(lam, mu, alpha) {
+      if (lam <= 0 || alpha <= 1e-9) return 0;
+      const shape = 1 / alpha;
+      const rate = 1 / (alpha * mu);
+      return Math.exp(shape * Math.log(rate) + (shape - 1) * Math.log(lam) - rate * lam - logGamma(shape));
+    }
+
+    function tailGe(pmfFn, kStar, mu, sd) {
+      // Exact upper-tail sum starting from kStar until negligible
+      const kMin = Math.max(0, Math.round(kStar));
+      let s = 0;
+      const kMax = Math.max(kMin + 800, Math.round(mu + 12 * sd + 100));
+      for (let k = kMin; k <= kMax; k++) {
+        const v = pmfFn(k);
+        s += v;
+        if (k > mu && v < 1e-16 * Math.max(s, 1e-300)) break;
+      }
+      return Math.min(1, s);
+    }
+
+    function nbSummary(mu, alpha, kStar) {
+      const n = alpha > 1e-9 ? 1 / alpha : Infinity;
+      const p = alpha > 1e-9 ? n / (n + mu) : 1;
+      const nbVar = mu + alpha * mu * mu;
+      const pPois = tailGe(k => poissonPMF(k, mu), kStar, mu, Math.sqrt(mu));
+      const pNB = tailGe(k => nbPMF(k, mu, alpha), kStar, mu, Math.sqrt(nbVar));
+      return { n, p, nbVar, pPois, pNB };
+    }
+
+    // ---- TAB 2: Exact Cox-Reid Adjusted Profile Likelihood + EB MAP ----
+    const TREND_A0 = 0.0137;
+    const TREND_A1 = 3.03;
+
+    function trendDisp(mu) {
+      return TREND_A0 + TREND_A1 / Math.max(mu, 0.5);
+    }
+
+    // Generate a deterministic 2-group count vector (2 * nRep samples) whose exact
+    // residual NB dispersion curvature matches (mu, alphaObs) around group mean mu
+    function synthCountsForCR(mu, nRep, alphaObs) {
+      // Balanced standardized z-scores with exact zero mean and unit sample variance per group
+      const zs = [];
+      for (let i = 0; i < nRep; i++) zs.push((i - (nRep - 1) / 2));
+      const ss = zs.reduce((a, b) => a + b * b, 0);
+      const sdZ = Math.sqrt(ss / Math.max(1, nRep - 1));
+      const unitZ = zs.map(z => z / sdZ);
+      const targetSD = Math.sqrt(mu + alphaObs * mu * mu);
+      const counts = [];
+      for (let g = 0; g < 2; g++) {
+        for (let i = 0; i < nRep; i++) {
+          counts.push(Math.max(0, mu + unitZ[i] * targetSD * 0.96));
+        }
+      }
+      return counts;
+    }
+
+    function coxReidLogLik(counts, nRep, alpha) {
+      const r = 1 / alpha;
+      let ll = 0;
+      let sumW0 = 0, sumW1 = 0;
+      // Group means (MLEs for 2-group equal size-factor design)
+      let m0 = 0, m1 = 0;
+      for (let i = 0; i < nRep; i++) { m0 += counts[i]; m1 += counts[nRep + i]; }
+      m0 = Math.max(m0 / nRep, 1e-6);
+      m1 = Math.max(m1 / nRep, 1e-6);
+      for (let i = 0; i < counts.length; i++) {
+        const y = counts[i];
+        const mu = i < nRep ? m0 : m1;
+        ll += logGamma(y + r) - logGamma(r) - logGamma(y + 1)
+            + r * Math.log(r / (r + mu)) + y * Math.log(mu / (r + mu));
+        const w = 1 / (1 / mu + alpha);
+        if (i < nRep) sumW0 += w; else sumW1 += w;
+      }
+      // For orthogonal 2-group design [1, x], det(X^T W X) = sumW0 * sumW1
+      const crPen = 0.5 * Math.log(Math.max(sumW0 * sumW1, 1e-300));
+      return ll - crPen;
+    }
+
+    function computeEB(mu, nRep, alphaTarget, priorVar) {
+      const alphaTr = trendDisp(mu);
+      const counts = synthCountsForCR(mu, nRep, alphaTarget);
+      const N = 220;
+      const log10Min = -3.4, log10Max = 0.5;
+      const grid = [];
+      let bestLik = -Infinity, alphaMLE = alphaTarget;
+      let bestPost = -Infinity, alphaMAP = alphaTr;
+
+      for (let i = 0; i < N; i++) {
+        const l10 = log10Min + (log10Max - log10Min) * (i / (N - 1));
+        const a = Math.pow(10, l10);
+        const lik = coxReidLogLik(counts, nRep, a);
+        const pri = -0.5 * Math.pow(Math.log(a) - Math.log(alphaTr), 2) / priorVar;
+        const post = lik + pri;
+        grid.push({ l10, a, lik, pri, post });
+        if (lik > bestLik) { bestLik = lik; alphaMLE = a; }
+        if (post > bestPost) { bestPost = post; alphaMAP = a; }
+      }
+      const sdPrior = Math.sqrt(priorVar);
+      const isOutlier = Math.log(alphaMLE) > Math.log(alphaTr) + 2.0 * sdPrior;
+      const alphaFinal = isOutlier ? alphaMLE : alphaMAP;
+      return { alphaTr, alphaMLE, alphaMAP, alphaFinal, isOutlier, grid, bestLik, bestPost };
+    }
+
+    function fmtSci(v) {
+      if (v === 0) return '0';
+      if (v < 1e-3) return v.toExponential(1);
+      return v.toFixed(4);
+    }
+
+    // ---- Preset wiring ----
+    const NB_PRESETS = {
+      part4: { mu: 500, alpha: 0.02, kmult: 1.30 },
+      tech:  { mu: 500, alpha: 0.00, kmult: 1.30 },
+      high:  { mu: 1000, alpha: 0.015, kmult: 1.30 },
+      low:   { mu: 12, alpha: 0.40, kmult: 1.85 },
+    };
+    document.querySelectorAll('[data-nb]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-nb]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const p = NB_PRESETS[btn.dataset.nb];
+        $('s-mu').value = p.mu; $('s-alpha').value = p.alpha; $('s-kmult').value = p.kmult;
+        renderNB();
+      });
+    });
+    ['s-mu', 's-alpha', 's-kmult'].forEach(id => $(id).addEventListener('input', renderNB));
+
+    const EB_PRESETS = {
+      ydr:     { lmu: 2.50, rep: 3, lmle: -2.24, pvar: 0.51 },
+      hsp:     { lmu: 4.69, rep: 3, lmle: -1.31, pvar: 0.51 },
+      yil:     { lmu: 0.70, rep: 3, lmle: -0.16, pvar: 0.51 },
+      lowflat: { lmu: 1.00, rep: 3, lmle: -2.40, pvar: 0.51 },
+      outlier: { lmu: 2.90, rep: 3, lmle: -0.45, pvar: 0.51 },
+    };
+    document.querySelectorAll('[data-eb]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-eb]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const p = EB_PRESETS[btn.dataset.eb];
+        $('s-eb-mu').value = p.lmu; $('s-eb-rep').value = p.rep;
+        $('s-eb-mle').value = p.lmle; $('s-eb-pvar').value = p.pvar;
+        renderEB();
+      });
+    });
+    ['s-eb-mu', 's-eb-rep', 's-eb-mle', 's-eb-pvar'].forEach(id => $(id).addEventListener('input', renderEB));
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function renderNB() {
+      const mu = +$('s-mu').value;
+      const alpha = +$('s-alpha').value;
+      const kmult = +$('s-kmult').value;
+      const kStar = Math.round(mu * kmult);
+
+      $('v-mu').textContent = mu;
+      $('v-alpha').textContent = alpha.toFixed(3);
+      $('v-kstar').textContent = `${kStar} (${kmult.toFixed(2)}×μ)`;
+
+      const st = nbSummary(mu, alpha, kStar);
+      $('gamma-cv-badge').textContent = `Bio CV = ${(Math.sqrt(alpha) * 100).toFixed(1)}%`;
+      $('nb-ratio-badge').textContent = `Var/μ = ${(1 + alpha * mu).toFixed(1)}×`;
+      $('k-n').textContent = Number.isFinite(st.n) ? st.n.toFixed(1) : '∞ (Poisson)';
+      $('k-p').textContent = Number.isFinite(st.n) ? st.p.toFixed(4) : '1.0000';
+      $('k-var').textContent = Math.round(st.nbVar).toLocaleString();
+      $('k-ppois').textContent = fmtSci(st.pPois);
+      $('k-pnb').textContent = fmtSci(st.pNB);
+
+      const cs = getComputedStyle(document.documentElement);
+      const cText = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cAcc2 = cs.getPropertyValue('--accent2').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      const sdNB = Math.sqrt(st.nbVar);
+      const xMin = Math.max(0, Math.floor(mu - 3.6 * sdNB));
+      const xMax = Math.ceil(Math.max(mu + 3.6 * sdNB, kStar + 0.6 * sdNB));
+
+      // 1. Gamma latent rate canvas
+      const g = prepCanvas($('gamma-canvas'));
+      if (g) {
+        const { ctx, W, H } = g;
+        const pL = 38, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xOf = (v) => pL + ((v - xMin) / Math.max(1, xMax - xMin)) * pw;
+        if (alpha <= 1e-9) {
+          // Dirac spike at mu
+          const xm = xOf(mu);
+          ctx.strokeStyle = cAcc2; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(xm, pT + ph); ctx.lineTo(xm, pT + 14); ctx.stroke();
+          ctx.fillStyle = cAcc2; ctx.font = 'bold 11px system-ui, sans-serif';
+          ctx.fillText('Constant Λ = μ (no bio variance)', pL + 10, pT + 14);
+        } else {
+          const pts = [];
+          let maxY = 0;
+          for (let i = 0; i <= 160; i++) {
+            const x = xMin + (xMax - xMin) * (i / 160);
+            const y = gammaPDF(x, mu, alpha);
+            if (y > maxY) maxY = y;
+            pts.push([x, y]);
+          }
+          ctx.fillStyle = cAcc2 + '28';
+          ctx.beginPath(); ctx.moveTo(xOf(pts[0][0]), pT + ph);
+          for (const [x, y] of pts) ctx.lineTo(xOf(x), pT + ph - (y / Math.max(maxY, 1e-12)) * (ph * 0.90));
+          ctx.lineTo(xOf(pts[pts.length - 1][0]), pT + ph); ctx.closePath(); ctx.fill();
+
+          ctx.strokeStyle = cAcc2; ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          pts.forEach(([x, y], idx) => {
+            const px = xOf(x), py = pT + ph - (y / Math.max(maxY, 1e-12)) * (ph * 0.90);
+            if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        }
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText(xMin, pL, H - 7);
+        ctx.fillText(`μ=${mu}`, xOf(mu) - 14, H - 7);
+        ctx.fillText(xMax, pL + pw - 24, H - 7);
+      }
+
+      // 2. Poisson vs NB PMF canvas
+      const c = prepCanvas($('nb-canvas'));
+      if (c) {
+        const { ctx, W, H } = c;
+        const pL = 42, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const step = Math.max(1, Math.floor((xMax - xMin) / 180));
+        const ks = [], pP = [], pN = [];
+        let maxY = 0;
+        for (let k = xMin; k <= xMax; k += step) {
+          const vp = poissonPMF(k, mu);
+          const vn = nbPMF(k, mu, alpha);
+          ks.push(k); pP.push(vp); pN.push(vn);
+          maxY = Math.max(maxY, vp, vn);
+        }
+        const xOf = (v) => pL + ((v - xMin) / Math.max(1, xMax - xMin)) * pw;
+        const yOf = (y) => pT + ph - (y / Math.max(maxY, 1e-12)) * (ph * 0.90);
+
+        // Shade NB upper tail >= kStar
+        ctx.fillStyle = cWarn + '77';
+        ctx.beginPath();
+        let started = false;
+        ks.forEach((k, i) => {
+          if (k >= kStar) {
+            const px = xOf(k), py = yOf(pN[i]);
+            if (!started) { ctx.moveTo(px, pT + ph); ctx.lineTo(px, py); started = true; }
+            else ctx.lineTo(px, py);
+          }
+        });
+        if (started) { ctx.lineTo(xOf(ks[ks.length - 1]), pT + ph); ctx.closePath(); ctx.fill(); }
+
+        // Poisson curve (dashed red)
+        ctx.save(); ctx.strokeStyle = cBad; ctx.lineWidth = 1.9; ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ks.forEach((k, i) => { const px = xOf(k), py = yOf(pP[i]); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+        ctx.stroke(); ctx.restore();
+
+        // NB curve (solid blue)
+        ctx.strokeStyle = cAcc; ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ks.forEach((k, i) => { const px = xOf(k), py = yOf(pN[i]); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+        ctx.stroke();
+
+        // k* line
+        const xk = xOf(kStar);
+        ctx.save(); ctx.strokeStyle = cWarn; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]);
+        ctx.beginPath(); ctx.moveTo(xk, pT); ctx.lineTo(xk, pT + ph); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = cWarn; ctx.font = 'bold 10.5px ui-monospace, monospace';
+        ctx.fillText(`k*=${kStar}`, Math.min(xk + 4, pL + pw - 52), pT + 14);
+
+        // Legend
+        ctx.fillStyle = cBad; ctx.font = 'bold 10.5px system-ui, sans-serif';
+        ctx.fillText('--- Poisson', pL + 8, pT + 11);
+        ctx.fillStyle = cAcc; ctx.fillText('— NB(μ, α)', pL + 82, pT + 11);
+
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText(xMin, pL, H - 7);
+        ctx.fillText(mu, xOf(mu) - 10, H - 7);
+        ctx.fillText(xMax, pL + pw - 24, H - 7);
+      }
+    }
+
+    function renderEB() {
+      const lmu = +$('s-eb-mu').value;
+      const mu = Math.pow(10, lmu);
+      const nRep = +$('s-eb-rep').value;
+      const lmle = +$('s-eb-mle').value;
+      const alphaTarget = Math.pow(10, lmle);
+      const priorVar = +$('s-eb-pvar').value;
+
+      $('v-eb-mu').textContent = `${lmu.toFixed(2)} (μ̄=${Math.round(mu)})`;
+      $('v-eb-rep').textContent = nRep;
+      $('v-eb-mle').textContent = alphaTarget.toFixed(4);
+      $('v-eb-pvar').textContent = priorVar.toFixed(2);
+
+      const res = computeEB(mu, nRep, alphaTarget, priorVar);
+      $('k-eb-tr').textContent = res.alphaTr.toFixed(4);
+      $('k-eb-mle').textContent = res.alphaMLE.toFixed(4);
+      $('k-eb-map').textContent = res.alphaMAP.toFixed(4);
+      $('k-eb-fin').textContent = res.alphaFinal.toFixed(4);
+
+      const badge = $('eb-status');
+      if (res.isOutlier) {
+        badge.textContent = '⚠ Dispersion Outlier (> +2σ_d): Kept Unshrunk!';
+        badge.className = 'badge bad';
+      } else {
+        const pull = Math.abs(Math.log(res.alphaMAP) - Math.log(res.alphaMLE)) /
+                     Math.max(1e-6, Math.abs(Math.log(res.alphaTr) - Math.log(res.alphaMLE)));
+        badge.textContent = `Shrunk ${(Math.min(1, pull) * 100).toFixed(0)}% Toward Trend`;
+        badge.className = 'badge ok';
+      }
+
+      const c = prepCanvas($('eb-canvas'));
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      const pL = 48, pR = 18, pT = 18, pB = 28, pw = W - pL - pR, ph = H - pT - pB;
+      ctx.strokeStyle = cBorder; ctx.beginPath();
+      ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+      const xMin = -3.4, xMax = 0.5, yMin = -6.0, yMax = 0.5;
+      const xOf = (v) => pL + ((v - xMin) / (xMax - xMin)) * pw;
+      const yOf = (y) => pT + ph - ((Math.max(yMin, Math.min(yMax, y)) - yMin) / (yMax - yMin)) * ph;
+
+      // Outlier boundary vertical line (+2 sd_prior above log trend)
+      const outX = Math.log10(res.alphaTr) + (2 * Math.sqrt(priorVar)) / Math.LN10;
+      if (outX <= xMax) {
+        ctx.save(); ctx.strokeStyle = cWarn; ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(xOf(outX), pT); ctx.lineTo(xOf(outX), pT + ph); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = cWarn; ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillText('+2σ_d outlier rule', Math.min(xOf(outX) + 4, pL + pw - 95), pT + 14);
+      }
+
+      const plotCurve = (getter, color, lw, dash) => {
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw;
+        if (dash) ctx.setLineDash(dash);
+        ctx.beginPath();
+        res.grid.forEach((pt, i) => {
+          const px = xOf(pt.l10), py = yOf(getter(pt));
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke(); ctx.restore();
+      };
+
+      plotCurve(pt => pt.pri, cBad, 2.0, [5, 3]);
+      plotCurve(pt => pt.lik - res.bestLik, cAcc, 2.1, [3, 2]);
+      plotCurve(pt => pt.post - res.bestPost, cOk, 2.8, null);
+
+      // Peak markers
+      const drawDot = (val, color, lbl) => {
+        const px = xOf(Math.log10(val)), py = yOf(0);
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(px, py, 4.8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(lbl, Math.max(pL + 2, Math.min(px - 14, pL + pw - 40)), py - 7);
+      };
+      ctx.font = 'bold 10.5px ui-monospace, monospace';
+      drawDot(res.alphaTr, cBad, 'Trend');
+      drawDot(res.alphaMLE, cAcc, 'MLE');
+      drawDot(res.alphaMAP, cOk, 'MAP');
+
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      for (let t = -3; t <= 0; t++) ctx.fillText(`10^${t}`, xOf(t) - 10, H - 8);
+      ctx.fillText('0', 26, yOf(0) + 3);
+      ctx.fillText('-3', 22, yOf(-3) + 3);
+      ctx.fillText('-6', 22, yOf(-6) + 3);
+
+      // Legend bottom-left
+      ctx.font = 'bold 10.5px system-ui, sans-serif';
+      ctx.fillStyle = cBad; ctx.fillText('--- Log-normal prior', pL + 8, pT + ph - 32);
+      ctx.fillStyle = cAcc; ctx.fillText('··· Cox–Reid ℓ_CR(α)', pL + 8, pT + ph - 19);
+      ctx.fillStyle = cOk;  ctx.fillText('— MAP log-posterior', pL + 8, pT + ph - 6);
+    }
+
+    new ResizeObserver(() => { renderNB(); renderEB(); }).observe($('nb-canvas'));
+    renderNB();
+    renderEB();
+  </script>
+</body>
+</html>
+

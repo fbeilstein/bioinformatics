@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pseudoalignment &amp; Equivalence-Class EM Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --t1: #2563eb;
+      --t2: #d97706;
+      --t3: #10b981;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface2: #0b1220;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #60a5fa;
+        --accent2: #a78bfa;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --bad: #f87171;
+        --t1: #60a5fa;
+        --t2: #fbbf24;
+        --t3: #34d399;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #0b1220;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #60a5fa;
+      --accent2: #a78bfa;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --t1: #60a5fa;
+      --t2: #fbbf24;
+      --t3: #34d399;
+    }
+    :root.light-theme {
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --t1: #2563eb;
+      --t2: #d97706;
+      --t3: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.38;
+    }
+    .tablist {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    [role="tab"] {
+      position: relative;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 7px 14px 9px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: -1px;
+      border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .btn {
+      appearance: none;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font: inherit;
+      font-size: 12.2px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn.primary:hover { opacity: 0.92; color: #fff; }
+    .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .card-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+    }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--surface2); font-weight: 700; color: var(--muted); white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    .num { text-align: right; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+    .slider-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px 12px;
+      margin-bottom: 8px;
+    }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 6px;
+        border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    canvas { width: 100%; height: 195px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 11px; color: var(--muted); }
+    .kpi-val { font-size: 14px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .pill-set { display: inline-flex; gap: 4px; }
+    .iso-chip {
+      padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff;
+      font-family: ui-monospace, monospace;
+    }
+    .iso-t1 { background: var(--t1); }
+    .iso-t2 { background: var(--t2); }
+    .iso-t3 { background: var(--t3); }
+    .iso-empty { background: var(--bad); }
+    .note-box {
+      margin-top: 8px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      border-left: 3px solid var(--warn);
+      background: var(--surface2);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Pseudoalignment and EM labs">
+    <button type="button" role="tab" id="tab-dbg" aria-selected="true">1. Colored de Bruijn Graph &amp; Compatibility Sets</button>
+    <button type="button" role="tab" id="tab-em" aria-selected="false">2. Equivalence-Class EM &amp; TPM Trap</button>
+  </div>
+
+  <!-- TAB 1: Colored dBG Pseudoalignment -->
+  <div role="tabpanel" id="panel-dbg" aria-labelledby="tab-dbg">
+    <div class="bar">
+      <span style="font-weight:700; color:var(--muted);">Select Read Origin:</span>
+      <button type="button" class="btn active" data-read="ex1">Shared Exon 1</button>
+      <button type="button" class="btn" data-read="ex2">Shared Exon 2</button>
+      <button type="button" class="btn" data-read="jxn23">Exon 2–3 Junction</button>
+      <button type="button" class="btn" data-read="jxn13">Exon 1–3 Skip Junction</button>
+      <button type="button" class="btn" data-read="err">Exon 2–3 + 1 Error k-mer</button>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Gene Isoforms &amp; Read Compatibility Diagram</span>
+          <span class="badge" id="eq-badge">E(r) = {T1, T2, T3}</span>
+        </div>
+        <svg id="iso-svg" viewBox="0 0 540 220" width="100%" height="220" role="img" aria-label="Three isoform exon structure and read placement"></svg>
+        <div class="note-box" id="dbg-explain"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Constituent k-mer Compatibility Lookup</span>
+          <span class="badge ok">No Base-Level DP!</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="k-mer compatibility table">
+          <table>
+            <thead>
+              <tr>
+                <th>Read k-mer</th>
+                <th>Graph Contig</th>
+                <th>Color Set C(k_m)</th>
+                <th>Running Intersection</th>
+              </tr>
+            </thead>
+            <tbody id="kmer-tbody"></tbody>
+          </table>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-lbl">Equivalence Class</div><div class="kpi-val" id="kpi-ec">—</div></div>
+          <div class="kpi"><div class="kpi-lbl">Lookups Needed</div><div class="kpi-val" id="kpi-ops">—</div></div>
+          <div class="kpi"><div class="kpi-lbl">DP Cells Computed</div><div class="kpi-val" style="color:var(--ok);">0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Equivalence-Class EM & TPM Trap -->
+  <div role="tabpanel" id="panel-em" aria-labelledby="tab-em" hidden>
+    <div class="bar">
+      <button type="button" class="btn primary" id="btn-step">Step (E + M)</button>
+      <button type="button" class="btn" id="btn-conv">Converge (20 Steps)</button>
+      <button type="button" class="btn" id="btn-reset">Reset Uniform (1/3)</button>
+      <span style="margin-left:auto; font-weight:700; color:var(--muted);">Iteration: <span id="em-iter" style="color:var(--accent); font-family:ui-monospace,monospace;">0</span></span>
+      <span class="badge" id="em-ll-badge">ℓ(π) = —</span>
+    </div>
+
+    <div class="slider-grid">
+      <label class="ctrl"><span class="ctrl-top"><span>Unique {T1} reads</span><span class="ctrl-val" id="v-y1">260</span></span>
+        <input type="range" id="s-y1" min="0" max="500" step="10" value="260"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Unique {T2} reads</span><span class="ctrl-val" id="v-y2">60</span></span>
+        <input type="range" id="s-y2" min="0" max="500" step="10" value="60"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Unique {T3} reads</span><span class="ctrl-val" id="v-y3">180</span></span>
+        <input type="range" id="s-y3" min="0" max="500" step="10" value="180"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Shared {T1, T2} reads</span><span class="ctrl-val" id="v-y12">200</span></span>
+        <input type="range" id="s-y12" min="0" max="500" step="10" value="200"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Shared {T1, T2, T3}</span><span class="ctrl-val" id="v-y123">300</span></span>
+        <input type="range" id="s-y123" min="0" max="600" step="10" value="300"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Mean Frag Length L̄</span><span class="ctrl-val" id="v-frag">200 bp</span></span>
+        <input type="range" id="s-frag" min="50" max="500" step="25" value="200"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>EM Estimates: Fractional est_counts &amp; TPM</span>
+          <span class="badge" id="total-n-badge">N = 1000</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="EM transcript estimates">
+          <table>
+            <thead>
+              <tr>
+                <th>Isoform</th>
+                <th class="num">ℓ (bp)</th>
+                <th class="num">ℓ̃ (eff)</th>
+                <th class="num">π_t</th>
+                <th class="num">est_counts</th>
+                <th class="num">TPM</th>
+              </tr>
+            </thead>
+            <tbody id="em-tbody"></tbody>
+          </table>
+        </div>
+        <div class="note-box">
+          <strong>TPM Trap (Why DESeq2 Rejects TPM):</strong> A short transcript (300 bp, <strong>3 reads</strong>) and a long transcript (300 kb, <strong>3,000 reads</strong>) yield the <em>exact same TPM</em>, yet Poisson relative error is <strong>57.7%</strong> vs. <strong>1.8%</strong> — TPM erases read-count certainty!
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Log-Likelihood Ascent &amp; est_counts Trajectory</span>
+          <span class="badge ok">Monotonic Δℓ ≥ 0</span>
+        </div>
+        <canvas id="em-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderDBG();
+      renderEM();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      if (idx === 1) requestAnimationFrame(renderEM);
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- TAB 1: Colored dBG Pseudoalignment ----
+    const READ_PRESETS = {
+      ex1: {
+        name: 'Shared Exon 1',
+        x1: 75, x2: 165, span: null,
+        kmers: [
+          { k: 'k₁ (pos 1)', contig: 'Contig E1', colors: ['T1', 'T2', 'T3'] },
+          { k: 'k₂ (pos 25)', contig: 'Contig E1', colors: ['T1', 'T2', 'T3'] },
+          { k: 'k₃ (pos 50)', contig: 'Contig E1', colors: ['T1', 'T2', 'T3'] },
+        ],
+        explain: 'Every k-mer maps to Exon 1 (shared by all three isoforms). Intersecting identical sets preserves {T1, T2, T3}; kallisto jumps straight to the end of Contig E1 without checking redundant intermediate k-mers.'
+      },
+      ex2: {
+        name: 'Shared Exon 2',
+        x1: 235, x2: 325, span: null,
+        kmers: [
+          { k: 'k₁ (pos 1)', contig: 'Contig E2', colors: ['T1', 'T2'] },
+          { k: 'k₂ (pos 30)', contig: 'Contig E2', colors: ['T1', 'T2'] },
+          { k: 'k₃ (pos 55)', contig: 'Contig E2', colors: ['T1', 'T2'] },
+        ],
+        explain: 'Exon 2 is absent from T3 (skipped isoform), so every k-mer carries color set {T1, T2}. The read joins equivalence class {T1, T2} — EM later splits it using unique evidence.'
+      },
+      jxn23: {
+        name: 'Exon 2–3 Junction',
+        x1: 305, x2: 410, span: [335, 385],
+        kmers: [
+          { k: 'k₁ (Exon 2 end)', contig: 'Contig E2', colors: ['T1', 'T2'] },
+          { k: 'k₂ (E2–E3 jxn)', contig: 'Contig J23', colors: ['T1'] },
+          { k: 'k₃ (Exon 3 start)', contig: 'Contig E3', colors: ['T1', 'T3'] },
+        ],
+        explain: 'Spanning the Exon 2–3 boundary intersects {T1, T2} ∩ {T1} ∩ {T1, T3} = {T1}. A single junction k-mer uniquely pins the read to isoform T1 without ever running Smith–Waterman!'
+      },
+      jxn13: {
+        name: 'Exon 1–3 Skip Junction',
+        x1: 145, x2: 410, span: [175, 385],
+        kmers: [
+          { k: 'k₁ (Exon 1 end)', contig: 'Contig E1', colors: ['T1', 'T2', 'T3'] },
+          { k: 'k₂ (E1–E3 skip)', contig: 'Contig J13', colors: ['T3'] },
+          { k: 'k₃ (Exon 3 start)', contig: 'Contig E3', colors: ['T1', 'T3'] },
+        ],
+        explain: 'This read skips Exon 2 entirely. Its junction k-mer exists ONLY in T3, collapsing the intersection {T1, T2, T3} ∩ {T3} ∩ {T1, T3} to {T3}.'
+      },
+      err: {
+        name: 'Exon 2–3 + 1 Error k-mer',
+        x1: 305, x2: 410, span: [335, 385],
+        kmers: [
+          { k: 'k₁ (Exon 2 end)', contig: 'Contig E2', colors: ['T1', 'T2'] },
+          { k: 'k₂ (1-bp seq error)', contig: 'Not in index', colors: [] },
+          { k: 'k₃ (E2–E3 jxn)', contig: 'Contig J23', colors: ['T1'] },
+          { k: 'k₄ (Exon 3 start)', contig: 'Contig E3', colors: ['T1', 'T3'] },
+        ],
+        explain: 'A single sequencing error destroys k-mers covering that base (∅, skipped during lookup), while flanking error-free k-mers still intersect cleanly to {T1} — fast and error-tolerant!'
+      }
+    };
+
+    function intersectEquivalenceClass(kmers) {
+      let running = null;
+      const trace = [];
+      for (const item of kmers) {
+        if (item.colors.length === 0) {
+          trace.push({ ...item, after: running ? [...running] : ['(skip ∅)'] });
+          continue;
+        }
+        if (running === null) running = [...item.colors];
+        else running = running.filter(x => item.colors.includes(x));
+        trace.push({ ...item, after: [...running] });
+      }
+      return { finalSet: running || [], trace };
+    }
+
+    let currentReadKey = 'ex1';
+    document.querySelectorAll('[data-read]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-read]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentReadKey = btn.dataset.read;
+        renderDBG();
+      });
+    });
+
+    function chipHTML(arr) {
+      if (!arr || arr.length === 0) return '<span class="iso-chip iso-empty">∅ (skip)</span>';
+      return '<span class="pill-set">' + arr.map(t => {
+        const cls = t === 'T1' ? 'iso-t1' : t === 'T2' ? 'iso-t2' : t === 'T3' ? 'iso-t3' : 'iso-empty';
+        return `<span class="iso-chip ${cls}">${t}</span>`;
+      }).join('') + '</span>';
+    }
+
+    function renderDBG() {
+      const pr = READ_PRESETS[currentReadKey];
+      const { finalSet, trace } = intersectEquivalenceClass(pr.kmers);
+      const cs = getComputedStyle(document.documentElement);
+      const cText = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cT1 = cs.getPropertyValue('--t1').trim();
+      const cT2 = cs.getPropertyValue('--t2').trim();
+      const cT3 = cs.getPropertyValue('--t3').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+
+      const ecText = `{${finalSet.join(', ')}}`;
+      $('eq-badge').textContent = `E(r) = ${ecText}`;
+      $('kpi-ec').textContent = ecText;
+      $('kpi-ops').textContent = `${pr.kmers.length} hash`;
+      $('dbg-explain').textContent = pr.explain;
+
+      $('kmer-tbody').innerHTML = trace.map(row => `
+        <tr>
+          <td style="font-family:ui-monospace,monospace;">${row.k}</td>
+          <td>${row.contig}</td>
+          <td>${chipHTML(row.colors)}</td>
+          <td>${chipHTML(row.after)}</td>
+        </tr>
+      `).join('');
+
+      // Render crisp SVG isoform exon schematic
+      const isoforms = [
+        { id: 'T1', y: 42, col: cT1, exons: [[55, 175, 'Exon 1'], [220, 335, 'Exon 2'], [385, 505, 'Exon 3']] },
+        { id: 'T2', y: 98, col: cT2, exons: [[55, 175, 'Exon 1'], [220, 335, 'Exon 2']] },
+        { id: 'T3', y: 154, col: cT3, exons: [[55, 175, 'Exon 1'], [385, 505, 'Exon 3']] },
+      ];
+      let svg = '';
+      for (const iso of isoforms) {
+        const compat = finalSet.includes(iso.id);
+        const op = compat ? 1.0 : 0.25;
+        svg += `<g opacity="${op}">`;
+        svg += `<text x="12" y="${iso.y + 17}" fill="${iso.col}" font-weight="700" font-size="13" font-family="ui-monospace,monospace">${iso.id}</text>`;
+        // Intron connectors
+        for (let i = 0; i < iso.exons.length - 1; i++) {
+          const xA = iso.exons[i][1], xB = iso.exons[i + 1][0], ym = iso.y + 13;
+          svg += `<path d="M${xA},${ym} Q${(xA + xB) / 2},${ym - 14} ${xB},${ym}" fill="none" stroke="${cMuted}" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+        }
+        for (const [x1, x2, lbl] of iso.exons) {
+          svg += `<rect x="${x1}" y="${iso.y}" width="${x2 - x1}" height="26" rx="5" fill="${iso.col}"/>`;
+          svg += `<text x="${(x1 + x2) / 2}" y="${iso.y + 17}" fill="#ffffff" font-size="11.5" font-weight="700" text-anchor="middle">${lbl}</text>`;
+        }
+        if (compat) {
+          svg += `<text x="515" y="${iso.y + 17}" fill="${iso.col}" font-size="13" font-weight="700">✓</text>`;
+        }
+        svg += `</g>`;
+      }
+      // Draw read bar at bottom
+      const ry = 196;
+      svg += `<text x="12" y="${ry + 11}" fill="${cText}" font-size="11.5" font-weight="700">Read r</text>`;
+      if (pr.span) {
+        svg += `<rect x="${pr.x1}" y="${ry}" width="${pr.span[0] - pr.x1}" height="14" rx="3" fill="${cBad}"/>`;
+        svg += `<line x1="${pr.span[0]}" y1="${ry + 7}" x2="${pr.span[1]}" y2="${ry + 7}" stroke="${cBad}" stroke-width="2" stroke-dasharray="4 3"/>`;
+        svg += `<rect x="${pr.span[1]}" y="${ry}" width="${pr.x2 - pr.span[1]}" height="14" rx="3" fill="${cBad}"/>`;
+      } else {
+        svg += `<rect x="${pr.x1}" y="${ry}" width="${pr.x2 - pr.x1}" height="14" rx="3" fill="${cBad}"/>`;
+      }
+      svg += `<line x1="${pr.x1}" y1="30" x2="${pr.x1}" y2="${ry}" stroke="${cBorder}" stroke-dasharray="3 3"/>`;
+      svg += `<line x1="${pr.x2}" y1="30" x2="${pr.x2}" y2="${ry}" stroke="${cBorder}" stroke-dasharray="3 3"/>`;
+      $('iso-svg').innerHTML = svg;
+    }
+
+    // ---- TAB 2: Exact Equivalence-Class EM ----
+    const RAW_LENGTHS = [2200, 1400, 1200];
+    const ISO_NAMES = ['T1 (E1-E2-E3)', 'T2 (E1-E2)', 'T3 (E1-E3)'];
+
+    function computeEffectiveLengths(rawLens, fragMean) {
+      return rawLens.map(L => Math.max(1, L - fragMean + 1));
+    }
+
+    function emLogLik(pi, effLens, eqClasses) {
+      let ll = 0;
+      for (const ec of eqClasses) {
+        if (ec.y <= 0) continue;
+        let s = 0;
+        for (const t of ec.members) s += pi[t] / effLens[t];
+        ll += ec.y * Math.log(Math.max(s, 1e-300));
+      }
+      return ll;
+    }
+
+    function emStep(pi, effLens, eqClasses) {
+      const N = eqClasses.reduce((acc, ec) => acc + ec.y, 0);
+      if (N <= 0) return { pi: [1 / 3, 1 / 3, 1 / 3], counts: [0, 0, 0] };
+      const counts = [0, 0, 0];
+      for (const ec of eqClasses) {
+        if (ec.y <= 0) continue;
+        let denom = 0;
+        for (const t of ec.members) denom += pi[t] / effLens[t];
+        for (const t of ec.members) {
+          counts[t] += ec.y * ((pi[t] / effLens[t]) / denom);
+        }
+      }
+      return { pi: counts.map(c => c / N), counts };
+    }
+
+    function computeTPM(counts, effLens) {
+      const rpk = counts.map((c, i) => c / effLens[i]);
+      const sumR = rpk.reduce((a, b) => a + b, 0);
+      if (sumR <= 0) return [0, 0, 0];
+      return rpk.map(v => (v / sumR) * 1e6);
+    }
+
+    let emState = { iter: 0, pi: [1 / 3, 1 / 3, 1 / 3], histCounts: [], histLL: [] };
+
+    function getEMInputs() {
+      const y1 = +$('s-y1').value, y2 = +$('s-y2').value, y3 = +$('s-y3').value;
+      const y12 = +$('s-y12').value, y123 = +$('s-y123').value, frag = +$('s-frag').value;
+      $('v-y1').textContent = y1; $('v-y2').textContent = y2; $('v-y3').textContent = y3;
+      $('v-y12').textContent = y12; $('v-y123').textContent = y123; $('v-frag').textContent = frag + ' bp';
+      const effLens = computeEffectiveLengths(RAW_LENGTHS, frag);
+      const eqClasses = [
+        { members: [0], y: y1 },
+        { members: [1], y: y2 },
+        { members: [2], y: y3 },
+        { members: [0, 1], y: y12 },
+        { members: [0, 1, 2], y: y123 },
+      ];
+      return { effLens, eqClasses, N: y1 + y2 + y3 + y12 + y123 };
+    }
+
+    function resetEM() {
+      const { effLens, eqClasses, N } = getEMInputs();
+      const pi0 = [1 / 3, 1 / 3, 1 / 3];
+      emState = {
+        iter: 0,
+        pi: pi0,
+        histCounts: [pi0.map(p => p * N)],
+        histLL: [emLogLik(pi0, effLens, eqClasses)]
+      };
+      renderEM();
+    }
+
+    function stepEM(nSteps = 1) {
+      const { effLens, eqClasses } = getEMInputs();
+      for (let s = 0; s < nSteps; s++) {
+        const res = emStep(emState.pi, effLens, eqClasses);
+        emState.pi = res.pi;
+        emState.iter += 1;
+        emState.histCounts.push(res.counts);
+        emState.histLL.push(emLogLik(emState.pi, effLens, eqClasses));
+      }
+      renderEM();
+    }
+
+    ['s-y1', 's-y2', 's-y3', 's-y12', 's-y123', 's-frag'].forEach(id => {
+      $(id).addEventListener('input', resetEM);
+    });
+    $('btn-step').addEventListener('click', () => stepEM(1));
+    $('btn-conv').addEventListener('click', () => { resetEM(); stepEM(20); });
+    $('btn-reset').addEventListener('click', resetEM);
+
+    function renderEM() {
+      const { effLens, N } = getEMInputs();
+      const counts = emState.histCounts[emState.histCounts.length - 1] || [0, 0, 0];
+      const tpm = computeTPM(counts, effLens);
+      const llNow = emState.histLL[emState.histLL.length - 1] || 0;
+      $('em-iter').textContent = emState.iter;
+      $('em-ll-badge').textContent = `ℓ(π) = ${llNow.toFixed(1)}`;
+      $('total-n-badge').textContent = `N = ${N}`;
+
+      const chips = ['iso-t1', 'iso-t2', 'iso-t3'];
+      $('em-tbody').innerHTML = [0, 1, 2].map(i => `
+        <tr>
+          <td><span class="iso-chip ${chips[i]}">T${i + 1}</span> ${ISO_NAMES[i].slice(3)}</td>
+          <td class="num">${RAW_LENGTHS[i]}</td>
+          <td class="num">${effLens[i]}</td>
+          <td class="num">${emState.pi[i].toFixed(4)}</td>
+          <td class="num" style="font-weight:700;">${counts[i].toFixed(1)}</td>
+          <td class="num">${Math.round(tpm[i]).toLocaleString()}</td>
+        </tr>
+      `).join('');
+
+      // Draw convergence canvas
+      const canvas = $('em-canvas');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const cs = getComputedStyle(document.documentElement);
+      const cText = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cols = [
+        cs.getPropertyValue('--t1').trim(),
+        cs.getPropertyValue('--t2').trim(),
+        cs.getPropertyValue('--t3').trim(),
+      ];
+      const cLL = cs.getPropertyValue('--accent2').trim();
+
+      const padL = 44, padR = 46, padT = 18, padB = 26;
+      const pw = W - padL - padR, ph = H - padT - padB;
+
+      ctx.strokeStyle = cBorder; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + ph); ctx.lineTo(padL + pw, padT + ph);
+      ctx.stroke();
+
+      const maxIt = Math.max(10, emState.histCounts.length - 1);
+      const maxC = Math.max(100, N * 0.72);
+      const xOf = (it) => padL + (it / maxIt) * pw;
+      const yOfC = (c) => padT + ph - (c / maxC) * ph;
+
+      // Grid & labels
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      for (let g = 0; g <= 4; g++) {
+        const val = (maxC * g) / 4;
+        const yy = yOfC(val);
+        ctx.fillText(Math.round(val), 6, yy + 3);
+      }
+      ctx.fillText('EM Iteration', padL + pw / 2 - 28, H - 6);
+
+      // Plot T1, T2, T3 trajectories
+      for (let t = 0; t < 3; t++) {
+        ctx.strokeStyle = cols[t]; ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        emState.histCounts.forEach((row, idx) => {
+          const x = xOf(idx), y = yOfC(row[t]);
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        const last = emState.histCounts[emState.histCounts.length - 1][t];
+        ctx.fillStyle = cols[t];
+        ctx.beginPath(); ctx.arc(xOf(emState.histCounts.length - 1), yOfC(last), 3.6, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Plot Δℓ(π) dashed on right scale
+      const ll0 = emState.histLL[0];
+      const dlls = emState.histLL.map(v => v - ll0);
+      const maxD = Math.max(1, ...dlls) * 1.15;
+      ctx.save();
+      ctx.strokeStyle = cLL; ctx.lineWidth = 1.8; ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      dlls.forEach((d, idx) => {
+        const x = xOf(idx), y = padT + ph - (d / maxD) * ph;
+        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = cLL; ctx.font = 'bold 10px ui-monospace, monospace';
+      ctx.fillText(`+Δℓ=${dlls[dlls.length - 1].toFixed(1)}`, padL + pw - 42, padT + 10);
+      ctx.fillStyle = cText; ctx.font = '10.5px system-ui, sans-serif';
+      ctx.fillText('T1', padL + 6, padT + 11);
+      ctx.fillStyle = cols[1]; ctx.fillText('T2', padL + 28, padT + 11);
+      ctx.fillStyle = cols[2]; ctx.fillText('T3', padL + 50, padT + 11);
+    }
+
+    new ResizeObserver(() => renderEM()).observe($('em-canvas'));
+    renderDBG();
+    resetEM();
+    stepEM(15);
+  </script>
+</body>
+</html>
+
