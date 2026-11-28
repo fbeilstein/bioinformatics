@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>3D Kabsch SVD Superposition, Chirality Trap &amp; TM-Score Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 145px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    input[type="range"] { width: 100%; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+      .chk-opt input[type="checkbox"] {
+        position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
+        width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important;
+      }
+      .chk-opt { position: relative; padding-left: 22px; }
+      .chk-opt input[type="checkbox"] + span::before {
+        content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+        width: 14px; height: 14px; border: 2px solid var(--border); border-radius: 3px; background: var(--bg);
+      }
+      .chk-opt input[type="checkbox"]:checked + span::before { background: var(--accent); border-color: var(--accent); }
+    }
+    .chk-opt { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 280px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    canvas.orbit { cursor: grab; touch-action: none; }
+    canvas.orbit:active { cursor: grabbing; }
+
+    .mat-box { font-family: ui-monospace, monospace; font-size: 11.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; margin-bottom: 7px; }
+    .mat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: right; margin-top: 4px; }
+    .mat-cell { background: var(--surface2); padding: 3px 6px; border-radius: 4px; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Kabsch SVD and TM-score labs">
+    <button type="button" role="tab" id="tab-kab" aria-selected="true">1. Live 3D Kabsch SVD, Chirality &amp; Transpose Traps</button>
+    <button type="button" role="tab" id="tab-tm" aria-selected="false">2. Frame-Shift Correspondence &amp; RMSD vs. TM-Score / GDT-TS</button>
+  </div>
+
+  <!-- TAB 1: Live 3D Kabsch SVD -->
+  <div role="tabpanel" id="panel-kab" aria-labelledby="tab-kab">
+    <div class="ctrl-bar">
+      <div class="btn-group" aria-label="Superposition stage">
+        <button type="button" class="btn" id="st-raw">1. Raw Frames</button>
+        <button type="button" class="btn" id="st-cent">2. Centroid Centered</button>
+        <button type="button" class="btn active" id="st-svd">3. Kabsch SVD Aligned</button>
+      </div>
+      <label class="chk-opt"><input type="checkbox" id="chk-mirror"><span>Mirror D-Peptide (det=−1)</span></label>
+      <label class="chk-opt"><input type="checkbox" id="chk-so3" checked><span>Enforce det(R) = +1</span></label>
+      <label class="chk-opt"><input type="checkbox" id="chk-tbug"><span>Transpose Bug (Pc @ R)</span></label>
+    </div>
+
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Global Rotation θ</span><span class="ctrl-val" id="v-rot">115°</span></span>
+        <input type="range" id="s-rot" min="0" max="180" step="5" value="115"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Translation Offset ‖t‖</span><span class="ctrl-val" id="v-tr">10 Å</span></span>
+        <input type="range" id="s-tr" min="0" max="18" step="1" value="10"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Internal Noise σ</span><span class="ctrl-val" id="v-sig">0.30 Å</span></span>
+        <input type="range" id="s-sig" min="0.00" max="1.20" step="0.05" value="0.30"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>3D Chiral Helix-Turn Backbones P (blue) vs Q (orange) — Drag to Orbit</span>
+          <span class="badge ok" id="kab-badge">det(R) = +1 (SO(3))</span>
+        </div>
+        <canvas id="c-kab3d" class="orbit"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Exact 3×3 Cross-Covariance C = P_cᵀ Q_c &amp; SVD</span>
+          <span class="badge" id="kab-det-badge">det(V·Uᵀ) = +1</span>
+        </div>
+        <div class="mat-box">
+          <div style="font-weight:700; color:var(--muted);">Cross-Covariance Matrix C (3×3):</div>
+          <div class="mat-grid" id="mat-c"></div>
+        </div>
+        <div class="mat-box">
+          <div style="font-weight:700; color:var(--muted);">Optimal Rotation R_col = V · diag(1, 1, d) · Uᵀ:</div>
+          <div class="mat-grid" id="mat-r"></div>
+        </div>
+        <div class="mat-box" style="margin-bottom:0;">
+          <div style="font-weight:700; color:var(--muted);">Singular Values S = diag(s₁, s₂, s₃):</div>
+          <div id="sv-line" style="margin-top:4px; color:var(--accent); font-weight:700;">—</div>
+          <div id="trap-note" style="margin-top:4px; font-family:system-ui,sans-serif; font-size:11.6px; color:var(--muted);">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Raw Frame RMSD</div><div class="kpi-val" id="k-raw">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Centroid-Centered RMSD</div><div class="kpi-val" id="k-cent">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Displayed Stage RMSD</div><div class="kpi-val" id="k-opt">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Rotation Determinant det(R)</div><div class="kpi-val" id="k-det">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Frame-Shift & TM-Score / GDT-TS -->
+  <div role="tabpanel" id="panel-tm" aria-labelledby="tab-tm" hidden>
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Index Frame Shift (Naive Slicing Bug)</span><span class="ctrl-val" id="v-sh">0 residues</span></span>
+        <input type="range" id="s-sh" min="0" max="4" step="1" value="0"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Flexible Surface Tail Swing (6 of 40 res)</span><span class="ctrl-val" id="v-sw">0.0 Å</span></span>
+        <input type="range" id="s-sw" min="0" max="18" step="0.5" value="0"></label>
+      <div class="btn-group">
+        <button type="button" class="btn" id="tm-pre-ok">Clean Match</button>
+        <button type="button" class="btn" id="tm-pre-sh">Off-by-2 Bug</button>
+        <button type="button" class="btn" id="tm-pre-tail">Floppy Tail (16 Å)</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Aligned 40-Residue Fold: Core (blue) + Tail (red) — Drag to Orbit</span>
+          <span class="badge ok" id="tm-fold-badge">Same Fold (TM &gt; 0.5)</span>
+        </div>
+        <canvas id="c-tm3d" class="orbit"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Per-Residue Deviation dᵢ (Å) &amp; GDT Thresholds</span>
+          <span class="badge" id="tm-d0-badge">d₀(L) = — Å</span>
+        </div>
+        <canvas id="c-tmbar"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Global Kabsch RMSD</div><div class="kpi-val" id="tk-rmsd">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">TM-Score (0–1)</div><div class="kpi-val" id="tk-tm">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">GDT-TS (1,2,4,8 Å)</div><div class="kpi-val" id="tk-gdt">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Paired Residues</div><div class="kpi-val" id="tk-n">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Deterministic PRNG & Exact 3x3 Linear Algebra / One-Sided Jacobi SVD ----
+    function mulberry32(seed) {
+      return function() {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function gaussNoise(n, seed) {
+      const rng = mulberry32(seed);
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const row = [];
+        for (let j = 0; j < 3; j++) {
+          const u1 = Math.max(1e-12, rng()), u2 = rng();
+          row.push(Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2));
+        }
+        out.push(row);
+      }
+      return out;
+    }
+
+    const det3 = (M) =>
+      M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
+      M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
+      M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+
+    function matMul3(A, B) {
+      const C = [[0,0,0],[0,0,0],[0,0,0]];
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 3; j++)
+          C[i][j] = A[i][0]*B[0][j] + A[i][1]*B[1][j] + A[i][2]*B[2][j];
+      return C;
+    }
+    const trans3 = (A) => [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]];
+
+    function svd3x3(M) {
+      // Exact one-sided Jacobi SVD: M = U * diag(S) * V^T
+      const A = M.map(r => [...r]);
+      const V = [[1,0,0],[0,1,0],[0,0,1]];
+      const pairs = [[0,1],[0,2],[1,2]];
+      for (let sweep = 0; sweep < 20; sweep++) {
+        let maxG = 0;
+        for (const [p, q] of pairs) {
+          let a = 0, b = 0, g = 0;
+          for (let i = 0; i < 3; i++) { a += A[i][p]*A[i][p]; b += A[i][q]*A[i][q]; g += A[i][p]*A[i][q]; }
+          if (Math.abs(g) > maxG) maxG = Math.abs(g);
+          if (Math.abs(g) < 1e-15 * Math.sqrt(a * b + 1e-30)) continue;
+          const tau = (b - a) / (2 * g);
+          const t = tau >= 0 ? 1 / (tau + Math.sqrt(1 + tau * tau)) : -1 / (-tau + Math.sqrt(1 + tau * tau));
+          const c = 1 / Math.sqrt(1 + t * t), s = t * c;
+          for (let i = 0; i < 3; i++) {
+            const ap = A[i][p], aq = A[i][q];
+            A[i][p] = c * ap - s * aq; A[i][q] = s * ap + c * aq;
+            const vp = V[i][p], vq = V[i][q];
+            V[i][p] = c * vp - s * vq; V[i][q] = s * vp + c * vq;
+          }
+        }
+        if (maxG < 1e-14) break;
+      }
+      const cols = [0, 1, 2].map(k => {
+        const colA = [A[0][k], A[1][k], A[2][k]];
+        const colV = [V[0][k], V[1][k], V[2][k]];
+        const s = Math.hypot(colA[0], colA[1], colA[2]);
+        return { s, u: s > 1e-12 ? colA.map(v => v / s) : null, v: colV };
+      }).sort((x, y) => y.s - x.s);
+
+      // Complete any degenerate null singular vectors cleanly
+      if (!cols[0].u) cols[0].u = [1, 0, 0];
+      if (!cols[1].u) {
+        const ref = Math.abs(cols[0].u[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+        const c1 = [cols[0].u[1]*ref[2] - cols[0].u[2]*ref[1], cols[0].u[2]*ref[0] - cols[0].u[0]*ref[2], cols[0].u[0]*ref[1] - cols[0].u[1]*ref[0]];
+        const n1 = Math.hypot(c1[0], c1[1], c1[2]) || 1;
+        cols[1].u = c1.map(v => v / n1);
+      }
+      if (!cols[2].u) {
+        const u0 = cols[0].u, u1 = cols[1].u;
+        cols[2].u = [u0[1]*u1[2] - u0[2]*u1[1], u0[2]*u1[0] - u0[0]*u1[2], u0[0]*u1[1] - u0[1]*u1[0]];
+      }
+      const U = [0,1,2].map(r => [cols[0].u[r], cols[1].u[r], cols[2].u[r]]);
+      const Vout = [0,1,2].map(r => [cols[0].v[r], cols[1].v[r], cols[2].v[r]]);
+      const S = [cols[0].s, cols[1].s, cols[2].s];
+      return { U, S, V: Vout };
+    }
+
+    function centroid(pts) {
+      const n = pts.length;
+      return [0,1,2].map(k => pts.reduce((s, p) => s + p[k], 0) / n);
+    }
+    function calcRMSD(A, B) {
+      let sum = 0;
+      for (let i = 0; i < A.length; i++) {
+        const dx = A[i][0]-B[i][0], dy = A[i][1]-B[i][1], dz = A[i][2]-B[i][2];
+        sum += dx*dx + dy*dy + dz*dz;
+      }
+      return Math.sqrt(sum / A.length);
+    }
+
+    function kabschSolve(P, Q, enforceSO3 = true, transposeBug = false) {
+      const cP = centroid(P), cQ = centroid(Q);
+      const Pc = P.map(p => [p[0]-cP[0], p[1]-cP[1], p[2]-cP[2]]);
+      const Qc = Q.map(q => [q[0]-cQ[0], q[1]-cQ[1], q[2]-cQ[2]]);
+      const C = [[0,0,0],[0,0,0],[0,0,0]];
+      for (let i = 0; i < Pc.length; i++)
+        for (let a = 0; a < 3; a++)
+          for (let b = 0; b < 3; b++) C[a][b] += Pc[i][a] * Qc[i][b];
+
+      const { U, S, V } = svd3x3(C);
+      const Ut = trans3(U);
+      const rawDet = det3(matMul3(V, Ut));
+      const d = (enforceSO3 && rawDet < 0) ? -1 : 1;
+      const D = [[1,0,0],[0,1,0],[0,0,d]];
+      const R_col = matMul3(matMul3(V, D), Ut);
+      // Correct row application is Pc @ R_col^T; transpose bug applies Pc @ R_col
+      const M_apply = transposeBug ? R_col : trans3(R_col);
+      const P_rot = Pc.map(p => [
+        p[0]*M_apply[0][0] + p[1]*M_apply[1][0] + p[2]*M_apply[2][0],
+        p[0]*M_apply[0][1] + p[1]*M_apply[1][1] + p[2]*M_apply[2][1],
+        p[0]*M_apply[0][2] + p[1]*M_apply[1][2] + p[2]*M_apply[2][2]
+      ]);
+      return {
+        Pc, Qc, P_rot, C, S, R_col, rawDet, detR: det3(R_col),
+        rawRMSD: calcRMSD(P, Q),
+        centRMSD: calcRMSD(Pc, Qc),
+        optRMSD: calcRMSD(P_rot, Qc)
+      };
+    }
+
+    // ---- Synthetic Chiral Backbones ----
+    const P_BASE = Array.from({ length: 18 }, (_, i) => {
+      const th = i * 100 * Math.PI / 180;
+      const extraX = i >= 12 ? (i - 11) * 1.1 : 0;
+      const extraY = i >= 12 ? (i - 11) * 0.65 : 0;
+      return [2.3 * Math.cos(th) + extraX, 2.3 * Math.sin(th) + extraY, 1.5 * i - 12.75];
+    });
+    const NOISE18 = gaussNoise(18, 2026);
+
+    const FOLD40 = Array.from({ length: 40 }, (_, i) => {
+      const t = (i / 39) * 4.6 * Math.PI;
+      return [
+        7.5 * Math.cos(t * 0.42) + 1.9 * Math.cos(t * 2.0),
+        7.5 * Math.sin(t * 0.42) + 1.9 * Math.sin(t * 2.0),
+        0.52 * i - 10.2 + 1.5 * Math.sin(t * 0.9)
+      ];
+    });
+    const NOISE40 = gaussNoise(40, 777);
+
+    function rotMatrix(deg) {
+      const a = deg * Math.PI / 180, b = deg * 0.35 * Math.PI / 180;
+      const Rz = [[Math.cos(a),-Math.sin(a),0],[Math.sin(a),Math.cos(a),0],[0,0,1]];
+      const Rx = [[1,0,0],[0,Math.cos(b),-Math.sin(b)],[0,Math.sin(b),Math.cos(b)]];
+      return matMul3(Rz, Rx);
+    }
+
+    // ---- 3D Viewport Renderer ----
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+    function project3D(pt, center, yaw, pitch, scale, cx, cy) {
+      const dx = pt[0]-center[0], dy = pt[1]-center[1], dz = pt[2]-center[2];
+      const cyw = Math.cos(yaw), syw = Math.sin(yaw), cph = Math.cos(pitch), sph = Math.sin(pitch);
+      const x1 = dx*cyw + dz*syw, z1 = -dx*syw + dz*cyw;
+      const y2 = dy*cph - z1*sph, z2 = dy*sph + z1*cph;
+      const persp = 55 / (55 - z2 * 0.6);
+      return { sx: cx + x1 * scale * persp, sy: cy - y2 * scale * persp };
+    }
+    function drawChains3D(canvas, A, B, cam, tailIdx = -1) {
+      const c = prepCanvas(canvas);
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+      const all = A.concat(B);
+      const ctr = centroid(all);
+      const maxR = Math.max(8, ...all.map(p => Math.hypot(p[0]-ctr[0], p[1]-ctr[1], p[2]-ctr[2])));
+      const scale = Math.min(W, H) * 0.40 / maxR;
+      const pA = A.map(p => project3D(p, ctr, cam.yaw, cam.pitch, scale, W/2, H/2));
+      const pB = B.map(p => project3D(p, ctr, cam.yaw, cam.pitch, scale, W/2, H/2));
+
+      // Pairwise connectors
+      ctx.strokeStyle = 'rgba(100,116,139,0.35)'; ctx.lineWidth = 1;
+      for (let i = 0; i < pA.length; i++) {
+        ctx.beginPath(); ctx.moveTo(pA[i].sx, pA[i].sy); ctx.lineTo(pB[i].sx, pB[i].sy); ctx.stroke();
+      }
+      const drawPoly = (pts, col, tailCol) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+          ctx.beginPath(); ctx.moveTo(pts[i].sx, pts[i].sy); ctx.lineTo(pts[i+1].sx, pts[i+1].sy);
+          ctx.strokeStyle = (tailIdx >= 0 && i >= tailIdx) ? tailCol : col;
+          ctx.lineWidth = 2.6; ctx.stroke();
+        }
+        pts.forEach((pt, i) => {
+          ctx.fillStyle = (tailIdx >= 0 && i >= tailIdx) ? tailCol : col;
+          ctx.beginPath(); ctx.arc(pt.sx, pt.sy, 3.6, 0, Math.PI * 2); ctx.fill();
+        });
+      };
+      drawPoly(pA, '#2563eb', '#7c3aed');
+      drawPoly(pB, '#ea580c', '#dc2626');
+    }
+
+    let stage = 'svd';
+    const cam1 = { yaw: 0.45, pitch: 0.35 }, cam2 = { yaw: 0.55, pitch: 0.35 };
+    const $ = (id) => document.getElementById(id);
+
+    function renderTab1() {
+      const deg = +$('s-rot').value, tr = +$('s-tr').value, sig = +$('s-sig').value;
+      const mirror = $('chk-mirror').checked, enforceSO3 = $('chk-so3').checked, tbug = $('chk-tbug').checked;
+      $('v-rot').textContent = `${deg}°`; $('v-tr').textContent = `${tr} Å`; $('v-sig').textContent = `${sig.toFixed(2)} Å`;
+
+      const Rt = rotMatrix(deg);
+      const tVec = [tr * 0.82, -tr * 0.48, tr * 0.31];
+      const Q = P_BASE.map((p, i) => {
+        const src = mirror ? [p[0], p[1], -p[2]] : p;
+        const r = [
+          src[0]*Rt[0][0] + src[1]*Rt[0][1] + src[2]*Rt[0][2],
+          src[0]*Rt[1][0] + src[1]*Rt[1][1] + src[2]*Rt[1][2],
+          src[0]*Rt[2][0] + src[1]*Rt[2][1] + src[2]*Rt[2][2]
+        ];
+        return [r[0] + tVec[0] + sig * NOISE18[i][0], r[1] + tVec[1] + sig * NOISE18[i][1], r[2] + tVec[2] + sig * NOISE18[i][2]];
+      });
+
+      const sol = kabschSolve(P_BASE, Q, enforceSO3, tbug);
+      const showA = stage === 'raw' ? P_BASE : (stage === 'cent' ? sol.Pc : sol.P_rot);
+      const showB = stage === 'raw' ? Q : sol.Qc;
+      const dispRMSD = stage === 'raw' ? sol.rawRMSD : (stage === 'cent' ? sol.centRMSD : sol.optRMSD);
+      drawChains3D($('c-kab3d'), showA, showB, cam1);
+
+      $('mat-c').innerHTML = sol.C.flat().map(v => `<div class="mat-cell">${v.toFixed(1)}</div>`).join('');
+      $('mat-r').innerHTML = sol.R_col.flat().map(v => `<div class="mat-cell">${v.toFixed(3)}</div>`).join('');
+      $('sv-line').textContent = `s₁ = ${sol.S[0].toFixed(1)},  s₂ = ${sol.S[1].toFixed(1)},  s₃ = ${sol.S[2].toFixed(1)}`;
+
+      $('k-raw').textContent = `${sol.rawRMSD.toFixed(2)} Å`;
+      $('k-cent').textContent = `${sol.centRMSD.toFixed(2)} Å`;
+      $('k-opt').textContent = `${dispRMSD.toFixed(2)} Å`;
+      $('k-det').textContent = sol.detR > 0 ? '+1.000' : '−1.000';
+      $('k-det').style.color = sol.detR > 0 ? 'var(--ok)' : 'var(--bad)';
+      $('kab-det-badge').textContent = `det(V·Uᵀ) = ${sol.rawDet >= 0 ? '+1' : '−1'}`;
+      $('kab-det-badge').className = `badge ${sol.rawDet >= 0 ? 'ok' : 'warn'}`;
+
+      const kb = $('kab-badge'), tn = $('trap-note');
+      if (sol.detR < 0) {
+        kb.textContent = 'ILLEGAL REFLECTION (det = −1)'; kb.className = 'badge bad';
+        tn.textContent = 'Warning: Skipping det(R) = +1 inverted an L-peptide into a D-enantiomer mirror image!';
+      } else if (tbug && stage === 'svd') {
+        kb.textContent = 'TRANSPOSE BUG (Pc @ R)'; kb.className = 'badge bad';
+        tn.textContent = 'Warning: R_col = VDUᵀ acts on column vectors — row matrices require Pc @ R_colᵀ!';
+      } else if (mirror) {
+        kb.textContent = 'Chirality Preserved (SO(3))'; kb.className = 'badge warn';
+        tn.textContent = 'det(V·Uᵀ) = −1 detected → d = −1 enforced! Proper SO(3) rotation preserves L-chirality.';
+      } else {
+        kb.textContent = 'Optimal SO(3) (det = +1)'; kb.className = 'badge ok';
+        tn.textContent = 'Centroid centering removes t*; 3×3 SVD maximizes tr(RC) over proper rotations.';
+      }
+    }
+
+    function renderTab2() {
+      const sh = +$('s-sh').value, sw = +$('s-sw').value;
+      $('v-sh').textContent = `${sh} residue${sh === 1 ? '' : 's'}`;
+      $('v-sw').textContent = `${sw.toFixed(1)} Å`;
+
+      const Qfull = FOLD40.map((p, i) => {
+        const q = [p[0] + 0.35 * NOISE40[i][0], p[1] + 0.35 * NOISE40[i][1], p[2] + 0.35 * NOISE40[i][2]];
+        if (i >= 34) {
+          const ramp = (i - 33) / 6;
+          q[0] += sw * ramp;
+          q[1] -= 0.45 * sw * ramp;
+        }
+        return q;
+      });
+      const Psub = sh === 0 ? FOLD40 : FOLD40.slice(0, FOLD40.length - sh);
+      const Qsub = sh === 0 ? Qfull : Qfull.slice(sh);
+      const L = Psub.length;
+      const sol = kabschSolve(Psub, Qsub, true, false);
+      const dists = sol.P_rot.map((p, i) => Math.hypot(p[0]-sol.Qc[i][0], p[1]-sol.Qc[i][1], p[2]-sol.Qc[i][2]));
+      const d0 = Math.max(0.5, 1.24 * Math.cbrt(Math.max(1, L - 15)) - 1.8);
+      const tm = dists.reduce((s, d) => s + 1 / (1 + (d / d0) * (d / d0)), 0) / L;
+      const gdt = [1, 2, 4, 8].reduce((s, cut) => s + dists.filter(d => d < cut).length / L, 0) / 4;
+
+      drawChains3D($('c-tm3d'), sol.P_rot, sol.Qc, cam2, L - 6);
+
+      const c = prepCanvas($('c-tmbar'));
+      if (c) {
+        const { ctx, W, H } = c;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 34, pR = 12, pT = 14, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        const maxD = Math.max(9, ...dists) * 1.08;
+        // GDT horizontal lines
+        for (const cut of [1, 2, 4, 8]) {
+          if (cut > maxD) continue;
+          const y = pT + ph - (cut / maxD) * ph;
+          ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL + pw, y); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '9.5px ui-monospace, monospace';
+          ctx.fillText(`${cut}Å`, 5, y + 3);
+        }
+        const bw = pw / L;
+        dists.forEach((d, i) => {
+          const bh = (d / maxD) * ph;
+          ctx.fillStyle = i >= L - 6 ? '#dc2626' : (d < 2 ? '#16a34a' : (d < 4 ? '#2563eb' : '#d97706'));
+          ctx.fillRect(pL + i * bw + 0.8, pT + ph - bh, Math.max(2, bw - 1.6), bh);
+        });
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Residue Index i (Red = Flexible Tail)', pL + pw / 2 - 75, H - 7);
+      }
+
+      $('tm-d0-badge').textContent = `d₀(${L}) = ${d0.toFixed(2)} Å`;
+      $('tk-rmsd').textContent = `${sol.optRMSD.toFixed(2)} Å`;
+      $('tk-rmsd').style.color = sol.optRMSD > 3.5 ? 'var(--bad)' : 'var(--ok)';
+      $('tk-tm').textContent = tm.toFixed(3);
+      $('tk-tm').style.color = tm >= 0.5 ? 'var(--ok)' : 'var(--bad)';
+      $('tk-gdt').textContent = gdt.toFixed(3);
+      $('tk-n').textContent = `${L} Cα pairs`;
+      const fb = $('tm-fold-badge');
+      fb.textContent = tm >= 0.5 ? `Same Fold (TM = ${tm.toFixed(2)})` : `Mismatch (TM = ${tm.toFixed(2)})`;
+      fb.className = `badge ${tm >= 0.5 ? 'ok' : 'bad'}`;
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+    function bindOrbit(canvas, cam, redraw) {
+      let dragging = false, lx = 0, ly = 0;
+      canvas.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId); });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        cam.yaw += (e.clientX - lx) * 0.012;
+        cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch + (e.clientY - ly) * 0.012));
+        lx = e.clientX; ly = e.clientY; redraw();
+      });
+      canvas.addEventListener('pointerup', () => { dragging = false; });
+      canvas.addEventListener('pointercancel', () => { dragging = false; });
+    }
+
+    function setStage(st, id) {
+      stage = st;
+      ['st-raw','st-cent','st-svd'].forEach(k => $(k).classList.toggle('active', k === id));
+      renderTab1();
+    }
+    $('st-raw').addEventListener('click', () => setStage('raw', 'st-raw'));
+    $('st-cent').addEventListener('click', () => setStage('cent', 'st-cent'));
+    $('st-svd').addEventListener('click', () => setStage('svd', 'st-svd'));
+    ['s-rot','s-tr','s-sig','chk-mirror','chk-so3','chk-tbug'].forEach(id => $(id).addEventListener('input', renderTab1));
+    ['s-sh','s-sw'].forEach(id => $(id).addEventListener('input', renderTab2));
+    $('tm-pre-ok').addEventListener('click', () => { $('s-sh').value = 0; $('s-sw').value = 0; renderTab2(); });
+    $('tm-pre-sh').addEventListener('click', () => { $('s-sh').value = 2; $('s-sw').value = 0; renderTab2(); });
+    $('tm-pre-tail').addEventListener('click', () => { $('s-sh').value = 0; $('s-sw').value = 16; renderTab2(); });
+
+    bindOrbit($('c-kab3d'), cam1, renderTab1);
+    bindOrbit($('c-tm3d'), cam2, renderTab2);
+    new ResizeObserver(renderAll).observe($('c-kab3d'));
+    renderAll();
+  </script>
+</body>
+</html>
+

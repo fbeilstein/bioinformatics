@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>SE(3)-Invariant Contact Maps &amp; Debye–Waller Mobility Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 155px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .grid-2 { display: grid; grid-template-columns: 1.05fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 295px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    canvas.orbit { cursor: grab; touch-action: none; }
+    canvas.orbit:active { cursor: grabbing; }
+    canvas.map { width: 295px; height: 295px; margin: 0 auto; cursor: crosshair; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Contact map and Debye-Waller labs">
+    <button type="button" role="tab" id="tab-map" aria-selected="true">1. SE(3)-Invariant Contact Maps &amp; Mirror Ambiguity</button>
+    <button type="button" role="tab" id="tab-dw" aria-selected="false">2. Debye–Waller B-Factor Diffraction &amp; Loop Visibility</button>
+  </div>
+
+  <!-- TAB 1: Contact Maps -->
+  <div role="tabpanel" id="panel-map" aria-labelledby="tab-map">
+    <div class="ctrl-bar">
+      <div class="btn-group" aria-label="Fold motif">
+        <button type="button" class="btn active" id="f-helix">α-Helix</button>
+        <button type="button" class="btn" id="f-par">Parallel β-Sheet</button>
+        <button type="button" class="btn" id="f-anti">Anti-Parallel β</button>
+        <button type="button" class="btn" id="f-bab">βαβ Motif</button>
+      </div>
+      <div class="btn-group" aria-label="Rigid and mirror actions">
+        <button type="button" class="btn" id="act-se3">Random SE(3) Motion</button>
+        <button type="button" class="btn" id="act-mir">Mirror Reflect (z→−z)</button>
+        <button type="button" class="btn" id="act-mode">Binary (&lt; r_c)</button>
+      </div>
+      <label class="ctrl" style="max-width:170px;"><span class="ctrl-top"><span>Contact Cutoff r_c</span><span class="ctrl-val" id="v-rc">8.0 Å</span></span>
+        <input type="range" id="s-rc" min="5.0" max="12.0" step="0.5" value="8.0"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>3D Cα Fold (N→C Rainbow, Drag to Orbit)</span>
+          <span class="badge ok" id="map-chir-badge">Right-Handed (L)</span>
+        </div>
+        <canvas id="c-fold3d" class="orbit"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Pairwise Distance Matrix Dᵢⱼ (Click Pixel to Inspect)</span>
+          <span class="badge ok" id="map-inv-badge">max |ΔD| = 0.00e+00</span>
+        </div>
+        <canvas id="c-dmap" class="map"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Selected Pair (i, j)</div><div class="kpi-val" id="mk-pair">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Euclidean Distance Dᵢⱼ</div><div class="kpi-val" id="mk-dist">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">max |ΔD| vs Original</div><div class="kpi-val" style="color:var(--ok);" id="mk-diff">0.00e+00 Å</div></div>
+      <div class="kpi"><div class="kpi-lbl">Contacts (&lt; r_c, |i−j|≥3)</div><div class="kpi-val" id="mk-cnt">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Debye-Waller -->
+  <div role="tabpanel" id="panel-dw" aria-labelledby="tab-dw" hidden>
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Target Loop B-Factor (Å²)</span><span class="ctrl-val" id="v-bf">79 Å²</span></span>
+        <input type="range" id="s-bf" min="5" max="160" step="1" value="79"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>X-Ray Resolution d_min (6LU7 = 2.16 Å)</span><span class="ctrl-val" id="v-res">2.16 Å</span></span>
+        <input type="range" id="s-res" min="1.20" max="4.00" step="0.04" value="2.16"></label>
+      <div class="btn-group">
+        <button type="button" class="btn" id="b-core">Rigid Core (15 Å²)</button>
+        <button type="button" class="btn active" id="b-loop">Mobile Loop (79 Å²)</button>
+        <button type="button" class="btn" id="b-dis">Disordered (140 Å²)</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Bragg Diffraction Intensity I/I₀ = exp(−2Bs²)</span>
+          <span class="badge" id="dw-res-badge">d = 2.16 Å</span>
+        </div>
+        <canvas id="c-bragg"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Unit-Cell Averaged Electron Density ρ(x)</span>
+          <span class="badge warn" id="dw-vis-badge">Weak Density</span>
+        </div>
+        <canvas id="c-rho"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">RMS Displacement √⟨u²⟩</div><div class="kpi-val" id="dk-sig">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Amplitude Factor exp(−Bs²)</div><div class="kpi-val" id="dk-amp">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Intensity Factor exp(−2Bs²)</div><div class="kpi-val" id="dk-int">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">X-Ray Visibility State</div><div class="kpi-val" id="dk-vis">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Analytical 3D Folds ----
+    function makeFold(kind) {
+      const pts = [];
+      if (kind === 'helix') {
+        for (let i = 0; i < 24; i++) {
+          const th = i * 100 * Math.PI / 180;
+          pts.push([2.3 * Math.cos(th), 2.3 * Math.sin(th), 1.5 * i]);
+        }
+      } else if (kind === 'par') {
+        for (let i = 0; i < 12; i++) pts.push([3.3 * i, 0, 0.7 * (i % 2 ? -1 : 1)]);
+        for (let i = 0; i < 12; i++) pts.push([3.3 * i, 4.8, 0.7 * (i % 2 ? -1 : 1)]);
+      } else if (kind === 'anti') {
+        for (let i = 0; i < 12; i++) pts.push([3.3 * i, 0, 0.7 * (i % 2 ? -1 : 1)]);
+        for (let i = 0; i < 12; i++) { const k = 11 - i; pts.push([3.3 * k, 4.8, 0.7 * (k % 2 ? -1 : 1)]); }
+      } else {
+        // beta-alpha-beta Rossmann motif (24 residues)
+        for (let i = 0; i < 7; i++) pts.push([3.3 * i, 0, 0.6 * (i % 2 ? -1 : 1)]);
+        for (let i = 0; i < 10; i++) {
+          const th = i * 100 * Math.PI / 180;
+          pts.push([19.8 - 2.1 * i, 2.4 + 2.2 * Math.cos(th), 5.8 + 2.2 * Math.sin(th)]);
+        }
+        for (let i = 0; i < 7; i++) pts.push([3.3 * i, 4.8, 0.6 * (i % 2 ? -1 : 1)]);
+      }
+      return pts;
+    }
+
+    function distMatrix(pts) {
+      const n = pts.length;
+      return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => {
+        const dx = pts[i][0]-pts[j][0], dy = pts[i][1]-pts[j][1], dz = pts[i][2]-pts[j][2];
+        return Math.hypot(dx, dy, dz);
+      }));
+    }
+
+    function randOrtho(seed) {
+      const a = (seed * 1.73) % (2 * Math.PI), b = (seed * 2.41) % (2 * Math.PI), c = (seed * 0.89) % (2 * Math.PI);
+      const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
+      return [
+        [ca*cb, ca*sb*sc - sa*cc, ca*sb*cc + sa*sc],
+        [sa*cb, sa*sb*sc + ca*cc, sa*sb*cc - ca*sc],
+        [-sb,   cb*sc,            cb*cc]
+      ];
+    }
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function rainbow(t) {
+      // Perceptually clean blue -> teal -> amber -> red N->C gradient
+      const h = (1 - t) * 230;
+      return `hsl(${h.toFixed(0)}, 78%, 50%)`;
+    }
+
+    function viridisR(v) {
+      // Smooth viridis-reversed ramp (0 = dark indigo/teal contact, 1 = pale yellow far)
+      const c = Math.max(0, Math.min(1, v));
+      const stops = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+      const s = c * (stops.length - 1);
+      const i = Math.min(stops.length - 2, Math.floor(s));
+      const f = s - i;
+      const r = Math.round(stops[i][0] + f * (stops[i+1][0] - stops[i][0]));
+      const g = Math.round(stops[i][1] + f * (stops[i+1][1] - stops[i][1]));
+      const b = Math.round(stops[i][2] + f * (stops[i+1][2] - stops[i][2]));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    let foldKind = 'helix';
+    let basePts = makeFold('helix');
+    let curPts = basePts.map(p => [...p]);
+    let baseD = distMatrix(basePts);
+    let mirrored = false;
+    let binaryMode = false;
+    let selI = 4, selJ = 8;
+    let se3Seed = 1;
+    const cam = { yaw: 0.55, pitch: 0.38 };
+    const $ = (id) => document.getElementById(id);
+
+    function loadFold(kind, btnId) {
+      foldKind = kind;
+      basePts = makeFold(kind);
+      curPts = basePts.map(p => [...p]);
+      baseD = distMatrix(basePts);
+      mirrored = false;
+      selI = kind === 'helix' ? 4 : (kind === 'par' ? 4 : (kind === 'anti' ? 3 : 2));
+      selJ = kind === 'helix' ? 8 : (kind === 'par' ? 16 : (kind === 'anti' ? 20 : 19));
+      ['f-helix','f-par','f-anti','f-bab'].forEach(k => $(k).classList.toggle('active', k === btnId));
+      renderTab1();
+    }
+
+    function renderTab1() {
+      const rc = +$('s-rc').value;
+      $('v-rc').textContent = `${rc.toFixed(1)} Å`;
+      const curD = distMatrix(curPts);
+      const N = curPts.length;
+      let maxDiff = 0, contacts = 0;
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const df = Math.abs(curD[i][j] - baseD[i][j]);
+          if (df > maxDiff) maxDiff = df;
+          if (j - i >= 3 && curD[i][j] < rc) contacts++;
+        }
+      }
+
+      // Draw 3D fold
+      const c1 = prepCanvas($('c-fold3d'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const ctr = [0,1,2].map(k => curPts.reduce((s, p) => s + p[k], 0) / N);
+        const maxR = Math.max(8, ...curPts.map(p => Math.hypot(p[0]-ctr[0], p[1]-ctr[1], p[2]-ctr[2])));
+        const scale = Math.min(W, H) * 0.40 / maxR;
+        const cyw = Math.cos(cam.yaw), syw = Math.sin(cam.yaw), cph = Math.cos(cam.pitch), sph = Math.sin(cam.pitch);
+        const proj = curPts.map(p => {
+          const dx = p[0]-ctr[0], dy = p[1]-ctr[1], dz = p[2]-ctr[2];
+          const x1 = dx*cyw + dz*syw, z1 = -dx*syw + dz*cyw;
+          const y2 = dy*cph - z1*sph, z2 = dy*sph + z1*cph;
+          const persp = 60 / (60 - z2 * 0.55);
+          return { sx: W/2 + x1*scale*persp, sy: H/2 - y2*scale*persp };
+        });
+
+        for (let i = 0; i < N - 1; i++) {
+          // Skip long jump between parallel strands visually with dashed line
+          const jump = curD[i][i+1] > 10;
+          ctx.save();
+          if (jump) ctx.setLineDash([4, 4]);
+          ctx.beginPath(); ctx.moveTo(proj[i].sx, proj[i].sy); ctx.lineTo(proj[i+1].sx, proj[i+1].sy);
+          ctx.strokeStyle = jump ? cs.getPropertyValue('--muted').trim() : rainbow(i / (N - 1));
+          ctx.lineWidth = jump ? 1.5 : 3.2; ctx.stroke();
+          ctx.restore();
+        }
+        // Highlight selected pair chord
+        ctx.save(); ctx.setLineDash([5, 3]);
+        ctx.beginPath(); ctx.moveTo(proj[selI].sx, proj[selI].sy); ctx.lineTo(proj[selJ].sx, proj[selJ].sy);
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.6; ctx.stroke(); ctx.restore();
+        const mx = 0.5*(proj[selI].sx + proj[selJ].sx), my = 0.5*(proj[selI].sy + proj[selJ].sy);
+        ctx.fillStyle = '#ef4444'; ctx.font = 'bold 11.5px ui-monospace, monospace';
+        ctx.fillText(`D(${selI+1},${selJ+1}) = ${curD[selI][selJ].toFixed(2)} Å`, mx + 6, my - 5);
+
+        proj.forEach((pt, i) => {
+          const isSel = i === selI || i === selJ;
+          ctx.fillStyle = isSel ? '#ef4444' : rainbow(i / (N - 1));
+          ctx.beginPath(); ctx.arc(pt.sx, pt.sy, isSel ? 6.2 : 4.2, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke();
+        });
+      }
+
+      // Draw distance / contact heatmap (origin='lower')
+      const c2 = prepCanvas($('c-dmap'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 26, pB = 24, pT = 8, pR = 8, pw = W - pL - pR, ph = H - pT - pB;
+        const cw = pw / N, ch = ph / N;
+        const isDark = document.documentElement.classList.contains('dark-theme') ||
+          (!document.documentElement.classList.contains('light-theme') && mqDark && mqDark.matches);
+
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < N; j++) {
+            const d = curD[i][j];
+            if (binaryMode) {
+              ctx.fillStyle = d < rc ? '#2563eb' : (isDark ? '#0b1220' : '#f1f5f9');
+            } else {
+              ctx.fillStyle = viridisR(d / 26.0);
+            }
+            const x = pL + j * cw;
+            const y = pT + (N - 1 - i) * ch;
+            ctx.fillRect(x, y, Math.ceil(cw), Math.ceil(ch));
+          }
+        }
+        // Highlight selected pixel (i, j) and symmetric (j, i)
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+        ctx.strokeRect(pL + selJ * cw, pT + (N - 1 - selI) * ch, cw, ch);
+        ctx.strokeRect(pL + selI * cw, pT + (N - 1 - selJ) * ch, cw, ch);
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1;
+        ctx.strokeRect(pL, pT, pw, ph);
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('1', pL, H - 7); ctx.fillText('Residue j', pL + pw / 2 - 20, H - 7); ctx.fillText(String(N), pL + pw - 12, H - 7);
+        ctx.fillText(String(N), 4, pT + 10); ctx.fillText('1', 8, pT + ph);
+      }
+
+      $('mk-pair').textContent = `(${selI + 1}, ${selJ + 1})`;
+      $('mk-dist').textContent = `${curD[selI][selJ].toFixed(2)} Å`;
+      $('mk-diff').textContent = `${maxDiff.toExponential(2)} Å`;
+      $('mk-cnt').textContent = `${contacts}`;
+      $('map-inv-badge').textContent = `max |ΔD| = ${maxDiff.toExponential(2)}`;
+      const cb = $('map-chir-badge');
+      cb.textContent = mirrored ? 'Mirrored (D) — Same Dᵢⱼ!' : 'Right-Handed (L)';
+      cb.className = `badge ${mirrored ? 'warn' : 'ok'}`;
+    }
+
+    function renderTab2() {
+      const B = +$('s-bf').value;
+      const dMin = +$('s-res').value;
+      $('v-bf').textContent = `${B} Å²`;
+      $('v-res').textContent = `${dMin.toFixed(2)} Å`;
+      $('dw-res-badge').textContent = `d = ${dMin.toFixed(2)} Å`;
+
+      const sigU = Math.sqrt(B / (8 * Math.PI * Math.PI));
+      const s2 = 1 / (4 * dMin * dMin);
+      const amp = Math.exp(-B * s2);
+      const inten = Math.exp(-2 * B * s2);
+
+      // Left plot: Bragg intensity attenuation curve (6.0 -> 1.2 Å)
+      const c1 = prepCanvas($('c-bragg'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 38, pR = 14, pT = 16, pB = 30, pw = W - pL - pR, ph = H - pT - pB;
+        const xOf = (d) => pL + ((6.0 - d) / (6.0 - 1.2)) * pw;
+        const yOf = (v) => pT + ph - v * ph;
+
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim(); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const drawCurve = (bVal, col, dash = []) => {
+          ctx.save(); ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          for (let k = 0; k <= 120; k++) {
+            const d = 6.0 - (k / 120) * (6.0 - 1.2);
+            const val = Math.exp(-2 * bVal / (4 * d * d));
+            const x = xOf(d), y = yOf(val);
+            k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.stroke(); ctx.restore();
+        };
+        drawCurve(15, '#2563eb', [5, 4]);
+        drawCurve(B, B > 80 ? '#dc2626' : (B > 45 ? '#d97706' : '#16a34a'));
+
+        // Vertical resolution cursor
+        const xr = xOf(dMin);
+        ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(xr, pT); ctx.lineTo(xr, pT + ph); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#7c3aed'; ctx.beginPath(); ctx.arc(xr, yOf(inten), 5, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('6.0 Å', pL, H - 10); ctx.fillText('Resolution d → atomic', pL + pw/2 - 50, H - 10); ctx.fillText('1.2 Å', pL + pw - 24, H - 10);
+        ctx.fillText('1.0', 10, pT + 6); ctx.fillText('0.5', 10, pT + ph/2 + 3); ctx.fillText('0.0', 10, pT + ph);
+        ctx.fillStyle = '#2563eb'; ctx.fillText('--- Core (15 Å²)', pL + 10, pT + 14);
+        ctx.fillStyle = B > 80 ? '#dc2626' : (B > 45 ? '#d97706' : '#16a34a');
+        ctx.fillText(`─── Target (${B} Å²)`, pL + 10, pT + 28);
+      }
+
+      // Right plot: Real-space electron density smearing
+      const c2 = prepCanvas($('c-rho'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const cs = getComputedStyle(document.documentElement);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+        const pL = 34, pR = 14, pT = 16, pB = 30, pw = W - pL - pR, ph = H - pT - pB;
+        const sig0 = 0.35;
+        const peakRef = 1 / Math.sqrt(2 * Math.PI * (sig0 * sig0 + 15 / (8 * Math.PI * Math.PI)));
+        const xOf = (x) => pL + ((x + 3.5) / 7.0) * pw;
+        const yOf = (v) => pT + ph - Math.min(1.08, v) / 1.12 * ph;
+
+        // 1-sigma noise floor band
+        const cutY = yOf(0.45);
+        ctx.fillStyle = 'rgba(148,163,184,0.18)'; ctx.fillRect(pL, cutY, pw, pT + ph - cutY);
+        ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = cs.getPropertyValue('--muted').trim();
+        ctx.beginPath(); ctx.moveTo(pL, cutY); ctx.lineTo(pL + pw, cutY); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('1σ crystal noise floor', pL + pw - 108, cutY - 5);
+
+        const drawRho = (bVal, col, dash = []) => {
+          const sTot = Math.sqrt(sig0 * sig0 + bVal / (8 * Math.PI * Math.PI));
+          ctx.save(); ctx.setLineDash(dash); ctx.strokeStyle = col; ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          for (let k = 0; k <= 140; k++) {
+            const x = -3.5 + (k / 140) * 7.0;
+            const rho = (1 / (Math.sqrt(2 * Math.PI) * sTot)) * Math.exp(-0.5 * (x / sTot) * (x / sTot)) / peakRef;
+            k === 0 ? ctx.moveTo(xOf(x), yOf(rho)) : ctx.lineTo(xOf(x), yOf(rho));
+          }
+          ctx.stroke(); ctx.restore();
+        };
+        drawRho(15, '#2563eb', [5, 4]);
+        drawRho(B, B > 80 ? '#dc2626' : (B > 45 ? '#d97706' : '#16a34a'));
+
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim(); ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('−3.5 Å', pL, H - 10); ctx.fillText('Atomic Position x (Å)', pL + pw/2 - 48, H - 10); ctx.fillText('+3.5 Å', pL + pw - 30, H - 10);
+      }
+
+      const sTot = Math.sqrt(0.35 * 0.35 + sigU * sigU);
+      const peakRel = Math.sqrt(0.35 * 0.35 + 15 / (8 * Math.PI * Math.PI)) / sTot;
+      let visTxt = 'Crisp Density', visCls = 'ok';
+      if (peakRel < 0.45) { visTxt = 'Invisible (Missing Res!)'; visCls = 'bad'; }
+      else if (peakRel < 0.65) { visTxt = 'Smeared / Weak Loop'; visCls = 'warn'; }
+
+      $('dk-sig').textContent = `${sigU.toFixed(2)} Å`;
+      $('dk-amp').textContent = `${(amp * 100).toFixed(2)}%`;
+      $('dk-int').textContent = `${(inten * 100).toFixed(2)}%`;
+      $('dk-vis').textContent = visTxt;
+      $('dk-vis').style.color = `var(--${visCls})`;
+      $('dw-vis-badge').textContent = visTxt;
+      $('dw-vis-badge').className = `badge ${visCls}`;
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+
+    // Wire Tab 1
+    $('f-helix').addEventListener('click', () => loadFold('helix', 'f-helix'));
+    $('f-par').addEventListener('click', () => loadFold('par', 'f-par'));
+    $('f-anti').addEventListener('click', () => loadFold('anti', 'f-anti'));
+    $('f-bab').addEventListener('click', () => loadFold('bab', 'f-bab'));
+    $('act-se3').addEventListener('click', () => {
+      se3Seed += 1;
+      const R = randOrtho(se3Seed);
+      const t = [Math.sin(se3Seed * 3.1) * 18, Math.cos(se3Seed * 2.3) * 15, Math.sin(se3Seed * 1.4) * 12];
+      curPts = curPts.map(p => [
+        R[0][0]*p[0] + R[0][1]*p[1] + R[0][2]*p[2] + t[0],
+        R[1][0]*p[0] + R[1][1]*p[1] + R[1][2]*p[2] + t[1],
+        R[2][0]*p[0] + R[2][1]*p[1] + R[2][2]*p[2] + t[2]
+      ]);
+      renderTab1();
+    });
+    $('act-mir').addEventListener('click', () => {
+      mirrored = !mirrored;
+      curPts = curPts.map(p => [p[0], p[1], -p[2]]);
+      renderTab1();
+    });
+    $('act-mode').addEventListener('click', () => {
+      binaryMode = !binaryMode;
+      $('act-mode').classList.toggle('active', binaryMode);
+      renderTab1();
+    });
+    $('s-rc').addEventListener('input', renderTab1);
+
+    $('c-dmap').addEventListener('click', (e) => {
+      const rect = $('c-dmap').getBoundingClientRect();
+      const pL = 26, pB = 24, pT = 8, pR = 8, pw = rect.width - pL - pR, ph = rect.height - pT - pB;
+      const N = curPts.length;
+      const j = Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - rect.left - pL) / pw) * N)));
+      const i = Math.max(0, Math.min(N - 1, N - 1 - Math.floor(((e.clientY - rect.top - pT) / ph) * N)));
+      selI = i; selJ = j;
+      renderTab1();
+    });
+
+    // Orbit 3D fold
+    let dragging = false, lx = 0, ly = 0;
+    $('c-fold3d').addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; $('c-fold3d').setPointerCapture(e.pointerId); });
+    $('c-fold3d').addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      cam.yaw += (e.clientX - lx) * 0.012;
+      cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch + (e.clientY - ly) * 0.012));
+      lx = e.clientX; ly = e.clientY; renderTab1();
+    });
+    $('c-fold3d').addEventListener('pointerup', () => { dragging = false; });
+
+    // Wire Tab 2
+    ['s-bf', 's-res'].forEach(id => $(id).addEventListener('input', renderTab2));
+    function setB(val, id) {
+      $('s-bf').value = val;
+      ['b-core','b-loop','b-dis'].forEach(k => $(k).classList.toggle('active', k === id));
+      renderTab2();
+    }
+    $('b-core').addEventListener('click', () => setB(15, 'b-core'));
+    $('b-loop').addEventListener('click', () => setB(79, 'b-loop'));
+    $('b-dis').addEventListener('click', () => setB(140, 'b-dis'));
+
+    new ResizeObserver(renderAll).observe($('c-fold3d'));
+    renderAll();
+  </script>
+</body>
+</html>

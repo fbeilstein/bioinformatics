@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Signed Backbone Dihedrals &amp; Hard-Sphere Ramachandran Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 9px; overflow-x: auto; }
+    [role="tab"] {
+      position: relative; flex: none; appearance: none; background: transparent; border: 0;
+      padding: 6px 14px 8px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; min-width: 150px; flex: 1; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+    .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 11.8px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
+    .grid-rama { display: grid; grid-template-columns: 330px 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 292px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    canvas.orbit { cursor: grab; touch-action: none; }
+    canvas.orbit:active { cursor: grabbing; }
+    canvas.rama-map { width: 306px; height: 306px; margin: 0 auto; cursor: crosshair; touch-action: none; }
+
+    .table-wrapper { overflow: auto; max-height: 292px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { position: sticky; top: 0; background: var(--surface2); font-weight: 700; color: var(--muted); }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.2px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Dihedral and Ramachandran labs">
+    <button type="button" role="tab" id="tab-tor" aria-selected="true">1. Signed 4-Atom Torsion (atan2) &amp; Peptide Planes</button>
+    <button type="button" role="tab" id="tab-rama" aria-selected="false">2. Analytical Hard-Sphere Ramachandran Explorer (L-Ala / Gly / Pro)</button>
+  </div>
+
+  <!-- TAB 1: Signed 4-Atom Torsion -->
+  <div role="tabpanel" id="panel-tor" aria-labelledby="tab-tor">
+    <div class="ctrl-bar">
+      <div class="btn-group" aria-label="Secondary structure presets">
+        <button type="button" class="btn active" id="pre-alpha">Right α (−60°, −45°)</button>
+        <button type="button" class="btn" id="pre-beta">β-Sheet (−135°, +140°)</button>
+        <button type="button" class="btn" id="pre-lalpha">Left α (+60°, +40°)</button>
+        <button type="button" class="btn" id="pre-cis">cis-ω (−75°, +145°, 0°)</button>
+      </div>
+      <div class="btn-group" aria-label="Inspect torsion angle">
+        <button type="button" class="btn active" id="ins-phi">Inspect φ</button>
+        <button type="button" class="btn" id="ins-psi">Inspect ψ</button>
+      </div>
+    </div>
+    <div class="ctrl-bar">
+      <label class="ctrl"><span class="ctrl-top"><span>Dihedral φ (Cᵢ₋₁–N–Cα–C)</span><span class="ctrl-val" id="v-phi">−60°</span></span>
+        <input type="range" id="s-phi" min="-180" max="180" step="1" value="-60"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Dihedral ψ (N–Cα–C–Nᵢ₊₁)</span><span class="ctrl-val" id="v-psi">−45°</span></span>
+        <input type="range" id="s-psi" min="-180" max="180" step="1" value="-45"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Peptide Planarity ω</span><span class="ctrl-val" id="v-omega">180°</span></span>
+        <input type="range" id="s-omega" min="0" max="180" step="5" value="180"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>3D Peptide Planes &amp; Normals n₁, n₂ (Drag to Orbit)</span>
+          <span class="badge" id="tor-plane-badge">Inspecting φ</span>
+        </div>
+        <canvas id="c-tor3d" class="orbit"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Exact 4-Atom Vector &amp; atan2 Breakdown</span>
+          <span class="badge ok" id="tor-sign-badge">atan2 matches IUPAC sign</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="Exact dihedral vector calculation">
+          <table>
+            <thead><tr><th>Quantity</th><th>Formula</th><th class="num">Value</th></tr></thead>
+            <tbody id="tor-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Signed atan2 Angle θ</div><div class="kpi-val" id="k-atan2">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Unsigned arccos(|θ|)</div><div class="kpi-val" id="k-acos">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Sign Indicator (n₁×n₂)·û</div><div class="kpi-val" id="k-sin">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Peptide Planarity ω</div><div class="kpi-val" id="k-om">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Hard-Sphere Ramachandran Explorer -->
+  <div role="tabpanel" id="panel-rama" aria-labelledby="tab-rama" hidden>
+    <div class="ctrl-bar">
+      <div class="btn-group" aria-label="Residue type">
+        <button type="button" class="btn active" id="res-ala">L-Alanine (Cβ methyl)</button>
+        <button type="button" class="btn" id="res-gly">Glycine (achiral −H)</button>
+        <button type="button" class="btn" id="res-pro">Proline (ring φ ≈ −63°)</button>
+      </div>
+      <div class="btn-group">
+        <button type="button" class="btn" id="rpre-beta">β-Sheet (−135°, 140°)</button>
+        <button type="button" class="btn" id="rpre-alpha">Right α (−60°, −45°)</button>
+        <button type="button" class="btn" id="rpre-left">Left α (+60°, +45°)</button>
+        <button type="button" class="btn" id="rpre-clash">Steric Clash (+20°, −20°)</button>
+      </div>
+    </div>
+
+    <div class="grid-rama">
+      <div class="card">
+        <div class="card-title">
+          <span>Hard-Sphere Map (Click/Drag φ, ψ)</span>
+          <span class="badge" id="rama-coord">−60°, −45°</span>
+        </div>
+        <canvas id="c-rama" class="rama-map"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Live 3D Capped Dipeptide Ace–Xaa–NMe (Drag to Orbit)</span>
+          <span class="badge ok" id="rama-status">Core Allowed</span>
+        </div>
+        <canvas id="c-rama3d" class="orbit" style="height:306px;"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Selected (φ, ψ)</div><div class="kpi-val" id="rk-ang">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Steric Region</div><div class="kpi-val" id="rk-reg">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Closest Non-Bonded Pair</div><div class="kpi-val" id="rk-min">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Hard-Sphere Clashes</div><div class="kpi-val" id="rk-cnt">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Theme sync (modern-web-guidance: dark-mode) ----
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderAll();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+    const mqDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mqDark && mqDark.addEventListener) {
+      mqDark.addEventListener('change', () => {
+        if (!document.documentElement.classList.contains('light-theme') &&
+            !document.documentElement.classList.contains('dark-theme')) renderAll();
+      });
+    }
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    // ---- Accessible Tabs ----
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => renderAll());
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    // ---- Exact 3D Vector & NeRF Peptide Geometry ----
+    const vSub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const vAdd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const vScale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+    const vDot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const vCross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const vNorm = (a) => Math.hypot(a[0], a[1], a[2]);
+    const vUnit = (a) => { const n = vNorm(a) || 1; return [a[0] / n, a[1] / n, a[2] / n]; };
+
+    function placeAtom(a, b, c, bondLen, bondAngleDeg, torsionDeg) {
+      const bc = vUnit(vSub(c, b));
+      const ab = vSub(b, a);
+      let n = vCross(ab, bc);
+      if (vNorm(n) < 1e-12) {
+        n = vCross([1, 0, 0], bc);
+        if (vNorm(n) < 1e-6) n = vCross([0, 1, 0], bc);
+      }
+      const nU = vUnit(n);
+      const mU = vCross(nU, bc);
+      const th = (180 - bondAngleDeg) * Math.PI / 180;
+      const ph = torsionDeg * Math.PI / 180;
+      const dx = bondLen * Math.cos(th);
+      const dy = bondLen * Math.sin(th) * Math.cos(ph);
+      const dz = bondLen * Math.sin(th) * Math.sin(ph);
+      return [
+        c[0] + dx * bc[0] + dy * mU[0] + dz * nU[0],
+        c[1] + dx * bc[1] + dy * mU[1] + dz * nU[1],
+        c[2] + dx * bc[2] + dy * mU[2] + dz * nU[2]
+      ];
+    }
+
+    function computeDihedral(r1, r2, r3, r4) {
+      const b1 = vSub(r2, r1), b2 = vSub(r3, r2), b3 = vSub(r4, r3);
+      const n1 = vCross(b1, b2), n2 = vCross(b2, b3);
+      const u = vUnit(b2);
+      const x = vDot(n1, n2);
+      const y = vDot(vCross(n1, n2), u);
+      const deg = Math.atan2(y, x) * 180 / Math.PI;
+      const cosA = Math.max(-1, Math.min(1, x / ((vNorm(n1) * vNorm(n2)) || 1)));
+      const acosDeg = Math.acos(cosA) * 180 / Math.PI;
+      return { b1, b2, b3, n1, n2, u, x, y, deg, acosDeg };
+    }
+
+    function buildDipeptide(phiDeg, psiDeg, omegaDeg = 180, residue = 'ALA') {
+      const N = [0, 0, 0];
+      const CA = [1.458, 0, 0];
+      const angCNC = 121.7 * Math.PI / 180;
+      const Cprev = [1.329 * Math.cos(angCNC), 1.329 * Math.sin(angCNC), 0];
+      const CAprev = placeAtom(CA, N, Cprev, 1.525, 116.2, omegaDeg);
+      const Oprev = placeAtom(CA, N, Cprev, 1.231, 123.0, omegaDeg - 180);
+      const H = placeAtom(Oprev, Cprev, N, 1.01, 119.5, 180);
+      const C = placeAtom(Cprev, N, CA, 1.525, 111.2, phiDeg);
+      const CB = placeAtom(Cprev, N, CA, 1.521, 110.5, phiDeg - 122.7);
+      const HA = placeAtom(Cprev, N, CA, 1.09, 109.5, phiDeg + 118.5);
+      const Nnext = placeAtom(N, CA, C, 1.329, 116.2, psiDeg);
+      const O = placeAtom(N, CA, C, 1.231, 120.8, psiDeg + 180);
+      const Hnext = placeAtom(CA, C, Nnext, 1.01, 119.5, omegaDeg);
+      const CAnext = placeAtom(CA, C, Nnext, 1.458, 121.7, omegaDeg);
+
+      const atoms = [
+        { name: 'Cα₋₁', el: 'C', pos: CAprev },
+        { name: 'C₋₁',  el: 'C', pos: Cprev },
+        { name: 'O₋₁',  el: 'O', pos: Oprev },
+        { name: 'N',    el: 'N', pos: N },
+        { name: 'H',    el: 'H', pos: H },
+        { name: 'Cα',   el: 'C', pos: CA },
+        { name: 'Hα',   el: 'H', pos: HA },
+        { name: 'C',    el: 'C', pos: C },
+        { name: 'O',    el: 'O', pos: O },
+        { name: 'N₊₁',  el: 'N', pos: Nnext },
+        { name: 'H₊₁',  el: 'H', pos: Hnext },
+        { name: 'Cα₊₁', el: 'C', pos: CAnext }
+      ];
+      if (residue !== 'GLY') atoms.push({ name: 'Cβ', el: 'CB', pos: CB });
+      return atoms;
+    }
+
+    const PAIRS_GLY = [
+      [1,7],[1,8],[1,9],[1,10],[2,7],[2,8],[2,9],[2,10],[2,6],
+      [0,7],[0,8],[0,9],[3,8],[3,9],[3,10],[3,11],[4,7],[4,8],[4,9],[4,10],[4,11],
+      [5,10],[5,11],[6,8],[6,9],[6,10],[6,11]
+    ];
+    const PAIRS_CB = [[12,0],[12,1],[12,2],[12,4],[12,8],[12,9],[12,10],[12,11]];
+    const R_NORM = { C: 1.49, CB: 1.56, N: 1.38, O: 1.33, H: 0.96 };
+    const R_OUTER = { C: 1.43, CB: 1.48, N: 1.31, O: 1.25, H: 0.90 };
+
+    function evalSterics(phiDeg, psiDeg, residue) {
+      const atoms = buildDipeptide(phiDeg, psiDeg, 180, residue);
+      if (residue === 'PRO' && (phiDeg < -78 || phiDeg > -48)) {
+        return { atoms, state: 0, clashes: [{ i: 3, j: 12, d: 0, lim: 0, label: 'Ring φ lock (−78°..−48°)' }], minRatio: 0.5, minLabel: 'Pyrrolidine ring' };
+      }
+      const pairs = residue === 'GLY' ? PAIRS_GLY : PAIRS_GLY.concat(PAIRS_CB);
+      let coreOk = true, outerOk = true;
+      const clashes = [];
+      let minMargin = Infinity, minLabel = '—', minDist = 0;
+      for (const [i, j] of pairs) {
+        const a = atoms[i], b = atoms[j];
+        const d = vNorm(vSub(a.pos, b.pos));
+        const hb = ((a.el === 'H' && b.el === 'O') || (a.el === 'O' && b.el === 'H')) ? 0.16 : 0;
+        const limO = R_OUTER[a.el] + R_OUTER[b.el] - hb;
+        const limN = R_NORM[a.el] + R_NORM[b.el] - hb;
+        const margin = d - limO;
+        if (margin < minMargin) { minMargin = margin; minLabel = `${a.name}···${b.name}`; minDist = d; }
+        if (d < limO) {
+          outerOk = false; coreOk = false;
+          clashes.push({ i, j, d, lim: limO, label: `${a.name}···${b.name}` });
+        } else if (d < limN) {
+          coreOk = false;
+        }
+      }
+      return { atoms, state: coreOk ? 2 : (outerOk ? 1 : 0), clashes, minDist, minLabel };
+    }
+
+    // ---- 3D Projection & Orbit Camera ----
+    function project3D(pt, center, yaw, pitch, scale, cx, cy) {
+      const p = vSub(pt, center);
+      const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+      const cph = Math.cos(pitch), sph = Math.sin(pitch);
+      const x1 = p[0] * cyw + p[2] * syw;
+      const z1 = -p[0] * syw + p[2] * cyw;
+      const y2 = p[1] * cph - z1 * sph;
+      const z2 = p[1] * sph + z1 * cph;
+      const persp = 14 / (14 - z2 * 0.45);
+      return { sx: cx + x1 * scale * persp, sy: cy - y2 * scale * persp, z: z2 };
+    }
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    const EL_COLORS = { C: '#475569', CB: '#ea580c', N: '#2563eb', O: '#dc2626', H: '#94a3b8' };
+    const EL_RAD = { C: 8, CB: 9, N: 8.5, O: 8, H: 5.5 };
+    const BONDS = [[0,1],[1,2],[1,3],[3,4],[3,5],[5,6],[5,7],[7,8],[7,9],[9,10],[9,11]];
+
+    function drawPeptide3D(canvas, atoms, cam, opts = {}) {
+      const c = prepCanvas(canvas);
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cBg = cs.getPropertyValue('--bg').trim();
+      const cTxt = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      ctx.fillStyle = cBg; ctx.fillRect(0, 0, W, H);
+
+      const center = atoms[5].pos; // Center on CA
+      const scale = Math.min(W, H) * 0.135;
+      const proj = atoms.map(a => project3D(a.pos, center, cam.yaw, cam.pitch, scale, W / 2, H / 2));
+
+      // Draw translucent peptide planes if requested
+      if (opts.drawPlanes) {
+        const drawPoly = (idxs, fill, stroke) => {
+          ctx.beginPath();
+          idxs.forEach((k, m) => m === 0 ? ctx.moveTo(proj[k].sx, proj[k].sy) : ctx.lineTo(proj[k].sx, proj[k].sy));
+          ctx.closePath();
+          ctx.fillStyle = fill; ctx.fill();
+          ctx.strokeStyle = stroke; ctx.lineWidth = 1.2; ctx.stroke();
+        };
+        drawPoly([0, 2, 3, 5, 4], 'rgba(37, 99, 235, 0.14)', 'rgba(37, 99, 235, 0.45)');
+        drawPoly([5, 8, 9, 11, 10], 'rgba(124, 58, 237, 0.14)', 'rgba(124, 58, 237, 0.45)');
+      }
+
+      // Draw bonds
+      const bondList = atoms.length > 12 ? BONDS.concat([[5, 12]]) : BONDS;
+      for (const [i, j] of bondList) {
+        const isFocus = opts.focusBond && ((i === opts.focusBond[0] && j === opts.focusBond[1]) || (i === opts.focusBond[1] && j === opts.focusBond[0]));
+        ctx.beginPath();
+        ctx.moveTo(proj[i].sx, proj[i].sy);
+        ctx.lineTo(proj[j].sx, proj[j].sy);
+        ctx.strokeStyle = isFocus ? '#f59e0b' : cMuted;
+        ctx.lineWidth = isFocus ? 4.2 : 2.4;
+        ctx.stroke();
+      }
+
+      // Draw plane normal arrows in Tab 1
+      if (opts.normals) {
+        const { mid, n1, n2 } = opts.normals;
+        const pMid = project3D(mid, center, cam.yaw, cam.pitch, scale, W / 2, H / 2);
+        const drawVec = (vec, col, lbl) => {
+          const tip = vAdd(mid, vScale(vUnit(vec), 1.55));
+          const pTip = project3D(tip, center, cam.yaw, cam.pitch, scale, W / 2, H / 2);
+          ctx.beginPath(); ctx.moveTo(pMid.sx, pMid.sy); ctx.lineTo(pTip.sx, pTip.sy);
+          ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.stroke();
+          ctx.fillStyle = col; ctx.beginPath(); ctx.arc(pTip.sx, pTip.sy, 3.8, 0, Math.PI * 2); ctx.fill();
+          ctx.font = 'bold 11.5px system-ui, sans-serif';
+          ctx.fillText(lbl, pTip.sx + 6, pTip.sy - 4);
+        };
+        drawVec(n1, '#2563eb', 'n₁');
+        drawVec(n2, '#ea580c', 'n₂');
+      }
+
+      // Draw steric clash lines in Tab 2
+      if (opts.clashes && opts.clashes.length) {
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        for (const cl of opts.clashes.slice(0, 4)) {
+          if (cl.i >= proj.length || cl.j >= proj.length) continue;
+          ctx.beginPath();
+          ctx.moveTo(proj[cl.i].sx, proj[cl.i].sy);
+          ctx.lineTo(proj[cl.j].sx, proj[cl.j].sy);
+          ctx.strokeStyle = cBad; ctx.lineWidth = 2.4; ctx.stroke();
+          const mx = 0.5 * (proj[cl.i].sx + proj[cl.j].sx);
+          const my = 0.5 * (proj[cl.i].sy + proj[cl.j].sy);
+          if (cl.d > 0) {
+            ctx.fillStyle = cBad; ctx.font = 'bold 10.5px ui-monospace, monospace';
+            ctx.fillText(`${cl.d.toFixed(2)} Å`, mx + 4, my - 4);
+          }
+        }
+        ctx.restore();
+      }
+
+      // Depth-sorted atoms
+      const order = atoms.map((a, idx) => ({ a, idx, p: proj[idx] })).sort((u, v) => u.p.z - v.p.z);
+      for (const { a, p } of order) {
+        const r = EL_RAD[a.el] || 7;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+        ctx.fillStyle = EL_COLORS[a.el] || cAcc; ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.3; ctx.stroke();
+        if (a.el !== 'H') {
+          ctx.fillStyle = cTxt; ctx.font = 'bold 10px system-ui, sans-serif';
+          ctx.fillText(a.name, p.sx + r + 2, p.sy + 3);
+        }
+      }
+    }
+
+    // ---- State & Orbit Dragging ----
+    const cam1 = { yaw: 0.45, pitch: 0.35 };
+    const cam2 = { yaw: 0.55, pitch: 0.38 };
+    let inspectAngle = 'phi';
+    let ramaResidue = 'ALA';
+    let ramaPhi = -60, ramaPsi = -45;
+    const ramaCache = {};
+
+    function bindOrbit(canvas, cam, redraw) {
+      let dragging = false, lx = 0, ly = 0;
+      canvas.addEventListener('pointerdown', (e) => {
+        dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        cam.yaw += (e.clientX - lx) * 0.012;
+        cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch + (e.clientY - ly) * 0.012));
+        lx = e.clientX; ly = e.clientY;
+        redraw();
+      });
+      canvas.addEventListener('pointerup', () => { dragging = false; });
+      canvas.addEventListener('pointercancel', () => { dragging = false; });
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    function renderTab1() {
+      const phi = +$('s-phi').value;
+      const psi = +$('s-psi').value;
+      const omega = +$('s-omega').value;
+      $('v-phi').textContent = `${phi}°`;
+      $('v-psi').textContent = `${psi}°`;
+      $('v-omega').textContent = `${omega}°`;
+
+      const atoms = buildDipeptide(phi, psi, omega, 'ALA');
+      const idx = inspectAngle === 'phi' ? [1, 3, 5, 7] : [3, 5, 7, 9];
+      const res = computeDihedral(atoms[idx[0]].pos, atoms[idx[1]].pos, atoms[idx[2]].pos, atoms[idx[3]].pos);
+      const mid = vScale(vAdd(atoms[idx[1]].pos, atoms[idx[2]].pos), 0.5);
+
+      $('tor-plane-badge').textContent = inspectAngle === 'phi' ? 'Inspecting φ (N–Cα)' : 'Inspecting ψ (Cα–C)';
+      drawPeptide3D($('c-tor3d'), atoms, cam1, {
+        drawPlanes: true,
+        focusBond: [idx[1], idx[2]],
+        normals: { mid, n1: res.n1, n2: res.n2 }
+      });
+
+      const fmtV = (v) => `(${v[0].toFixed(2)}, ${v[1].toFixed(2)}, ${v[2].toFixed(2)})`;
+      const rows = [
+        ['Bond b₁', `${atoms[idx[1]].name} − ${atoms[idx[0]].name}`, fmtV(res.b1)],
+        ['Axis b₂ (û)', `${atoms[idx[2]].name} − ${atoms[idx[1]].name}`, fmtV(res.u)],
+        ['Bond b₃', `${atoms[idx[3]].name} − ${atoms[idx[2]].name}`, fmtV(res.b3)],
+        ['Plane normal n₁', 'b₁ × b₂', fmtV(vUnit(res.n1))],
+        ['Plane normal n₂', 'b₂ × b₃', fmtV(vUnit(res.n2))],
+        ['cos-term', 'n₁ · n₂', res.x.toFixed(4)],
+        ['sin-term', '(n₁ × n₂) · û', res.y.toFixed(4)],
+        ['Signed atan2(y, x)', 'IUPAC (−180°, +180°]', `${res.deg.toFixed(1)}°`],
+        ['Unsigned arccos', 'loses sign when θ < 0!', `${res.acosDeg.toFixed(1)}°`]
+      ];
+      $('tor-tbody').innerHTML = rows.map(r => `<tr><td><strong>${r[0]}</strong></td><td><code>${r[1]}</code></td><td class="num">${r[2]}</td></tr>`).join('');
+
+      $('k-atan2').textContent = `${res.deg.toFixed(1)}°`;
+      $('k-acos').textContent = `${res.acosDeg.toFixed(1)}°`;
+      $('k-acos').style.color = res.deg < -0.5 ? 'var(--warn)' : 'var(--ok)';
+      $('k-sin').textContent = `${res.y >= 0 ? '+' : ''}${res.y.toFixed(3)}`;
+      $('k-om').textContent = `${omega}° (${omega >= 150 ? 'trans' : omega <= 30 ? 'cis' : 'twisted'})`;
+      const sb = $('tor-sign-badge');
+      if (res.deg < -0.5) {
+        sb.textContent = 'arccos misses minus sign!'; sb.className = 'badge warn';
+      } else {
+        sb.textContent = 'atan2 & arccos agree (θ ≥ 0)'; sb.className = 'badge ok';
+      }
+    }
+
+    // ---- Tab 2: Precomputed Hard-Sphere Grid ----
+    function getRamaGrid(resName) {
+      if (ramaCache[resName]) return ramaCache[resName];
+      const N = 73;
+      const grid = new Uint8Array(N * N);
+      for (let iy = 0; iy < N; iy++) {
+        const psi = 180 - (iy / (N - 1)) * 360;
+        for (let ix = 0; ix < N; ix++) {
+          const phi = -180 + (ix / (N - 1)) * 360;
+          grid[iy * N + ix] = evalSterics(phi, psi, resName).state;
+        }
+      }
+      ramaCache[resName] = { N, grid };
+      return ramaCache[resName];
+    }
+
+    function renderTab2() {
+      const { N, grid } = getRamaGrid(ramaResidue);
+      const canvas = $('c-rama');
+      const c = prepCanvas(canvas);
+      if (c) {
+        const { ctx, W, H } = c;
+        const padL = 32, padB = 26, padT = 10, padR = 10;
+        const pw = W - padL - padR, ph = H - padT - padB;
+        const cs = getComputedStyle(document.documentElement);
+        const isDark = document.documentElement.classList.contains('dark-theme') ||
+          (!document.documentElement.classList.contains('light-theme') && mqDark && mqDark.matches);
+        ctx.fillStyle = cs.getPropertyValue('--bg').trim();
+        ctx.fillRect(0, 0, W, H);
+
+        const cw = pw / N, ch = ph / N;
+        const colCore = ramaResidue === 'GLY' ? '#ea580c' : (ramaResidue === 'PRO' ? '#7c3aed' : '#2563eb');
+        const colOuter = ramaResidue === 'GLY' ? (isDark ? '#7c2d12' : '#fed7aa') :
+                         (ramaResidue === 'PRO' ? (isDark ? '#4c1d95' : '#ddd6fe') : (isDark ? '#1e3a8a' : '#93c5fd'));
+        const colBad = isDark ? '#0b1220' : '#f1f5f9';
+
+        for (let iy = 0; iy < N; iy++) {
+          for (let ix = 0; ix < N; ix++) {
+            const st = grid[iy * N + ix];
+            ctx.fillStyle = st === 2 ? colCore : (st === 1 ? colOuter : colBad);
+            ctx.fillRect(padL + ix * cw, padT + iy * ch, Math.ceil(cw), Math.ceil(ch));
+          }
+        }
+        // Axes & crosshairs
+        ctx.strokeStyle = cs.getPropertyValue('--border').trim();
+        ctx.lineWidth = 1;
+        ctx.strokeRect(padL, padT, pw, ph);
+        ctx.beginPath();
+        ctx.moveTo(padL + pw / 2, padT); ctx.lineTo(padL + pw / 2, padT + ph);
+        ctx.moveTo(padL, padT + ph / 2); ctx.lineTo(padL + pw, padT + ph / 2);
+        ctx.stroke();
+
+        ctx.fillStyle = cs.getPropertyValue('--muted').trim();
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('−180', padL, H - 8); ctx.fillText('0° (φ)', padL + pw / 2, H - 8); ctx.fillText('+180', padL + pw, H - 8);
+        ctx.textAlign = 'right';
+        ctx.fillText('+180', padL - 4, padT + 9); ctx.fillText('0°', padL - 4, padT + ph / 2 + 3); ctx.fillText('−180', padL - 4, padT + ph);
+
+        // Current (phi, psi) crosshair
+        const px = padL + ((ramaPhi + 180) / 360) * pw;
+        const py = padT + ((180 - ramaPsi) / 360) * ph;
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+      }
+
+      const ev = evalSterics(ramaPhi, ramaPsi, ramaResidue);
+      drawPeptide3D($('c-rama3d'), ev.atoms, cam2, { drawPlanes: false, clashes: ev.clashes });
+
+      $('rama-coord').textContent = `${ramaPhi.toFixed(0)}°, ${ramaPsi.toFixed(0)}°`;
+      $('rk-ang').textContent = `(${ramaPhi.toFixed(0)}°, ${ramaPsi.toFixed(0)}°)`;
+      const stTxt = ev.state === 2 ? 'Core Allowed' : (ev.state === 1 ? 'Outer Limit' : 'Steric Clash!');
+      const stCls = ev.state === 2 ? 'ok' : (ev.state === 1 ? 'warn' : 'bad');
+      $('rama-status').textContent = stTxt;
+      $('rama-status').className = `badge ${stCls}`;
+      $('rk-reg').textContent = stTxt;
+      $('rk-reg').style.color = `var(--${stCls})`;
+      $('rk-min').textContent = ev.minDist ? `${ev.minLabel} (${ev.minDist.toFixed(2)} Å)` : ev.minLabel;
+      $('rk-cnt').textContent = `${ev.clashes.length}`;
+      $('rk-cnt').style.color = ev.clashes.length > 0 ? 'var(--bad)' : 'var(--ok)';
+    }
+
+    function renderAll() { renderTab1(); renderTab2(); }
+
+    // Wire Tab 1 controls
+    function setPreset1(phi, psi, om, btnId) {
+      $('s-phi').value = phi; $('s-psi').value = psi; $('s-omega').value = om;
+      ['pre-alpha','pre-beta','pre-lalpha','pre-cis'].forEach(id => $(id).classList.toggle('active', id === btnId));
+      renderTab1();
+    }
+    $('pre-alpha').addEventListener('click', () => setPreset1(-60, -45, 180, 'pre-alpha'));
+    $('pre-beta').addEventListener('click', () => setPreset1(-135, 140, 180, 'pre-beta'));
+    $('pre-lalpha').addEventListener('click', () => setPreset1(60, 40, 180, 'pre-lalpha'));
+    $('pre-cis').addEventListener('click', () => setPreset1(-75, 145, 0, 'pre-cis'));
+    $('ins-phi').addEventListener('click', () => { inspectAngle = 'phi'; $('ins-phi').classList.add('active'); $('ins-psi').classList.remove('active'); renderTab1(); });
+    $('ins-psi').addEventListener('click', () => { inspectAngle = 'psi'; $('ins-psi').classList.add('active'); $('ins-phi').classList.remove('active'); renderTab1(); });
+    ['s-phi', 's-psi', 's-omega'].forEach(id => $(id).addEventListener('input', renderTab1));
+
+    // Wire Tab 2 controls
+    function setRes(r, id) {
+      ramaResidue = r;
+      ['res-ala','res-gly','res-pro'].forEach(k => $(k).classList.toggle('active', k === id));
+      if (r === 'PRO' && (ramaPhi < -78 || ramaPhi > -48)) ramaPhi = -63;
+      renderTab2();
+    }
+    $('res-ala').addEventListener('click', () => setRes('ALA', 'res-ala'));
+    $('res-gly').addEventListener('click', () => setRes('GLY', 'res-gly'));
+    $('res-pro').addEventListener('click', () => setRes('PRO', 'res-pro'));
+    $('rpre-beta').addEventListener('click', () => { ramaPhi = -135; ramaPsi = 140; renderTab2(); });
+    $('rpre-alpha').addEventListener('click', () => { ramaPhi = -60; ramaPsi = -45; renderTab2(); });
+    $('rpre-left').addEventListener('click', () => { ramaPhi = 60; ramaPsi = 45; renderTab2(); });
+    $('rpre-clash').addEventListener('click', () => { ramaPhi = 20; ramaPsi = -20; renderTab2(); });
+
+    // Rama map click & drag
+    let dragMap = false;
+    function pickRama(e) {
+      const rect = $('c-rama').getBoundingClientRect();
+      const padL = 32, padB = 26, padT = 10, padR = 10;
+      const pw = rect.width - padL - padR, ph = rect.height - padT - padB;
+      const u = Math.max(0, Math.min(1, (e.clientX - rect.left - padL) / pw));
+      const v = Math.max(0, Math.min(1, (e.clientY - rect.top - padT) / ph));
+      ramaPhi = Math.round(-180 + u * 360);
+      ramaPsi = Math.round(180 - v * 360);
+      renderTab2();
+    }
+    $('c-rama').addEventListener('pointerdown', (e) => { dragMap = true; $('c-rama').setPointerCapture(e.pointerId); pickRama(e); });
+    $('c-rama').addEventListener('pointermove', (e) => { if (dragMap) pickRama(e); });
+    $('c-rama').addEventListener('pointerup', () => { dragMap = false; });
+
+    bindOrbit($('c-tor3d'), cam1, renderTab1);
+    bindOrbit($('c-rama3d'), cam2, renderTab2);
+    new ResizeObserver(renderAll).observe($('c-tor3d'));
+    renderAll();
+  </script>
+</body>
+</html>
