@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Coverage, Allelic Dropout &amp; AAF Spectrum Simulator</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228; --surface-dark: #2a2e37; --surface2-dark: #181a20;
+      --border-dark: #3d4350; --text-dark: #e8ecf2; --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6; --good-dark: #66bb6a; --warn-dark: #ffb74d;
+      --bad-dark: #ef5350; --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb; --surface-light: #ffffff; --surface2-light: #eef2f7;
+      --border-light: #d4dce6; --text-light: #1a202c; --muted-light: #5a6578;
+      --accent-light: #1565c0; --good-light: #2e7d32; --warn-light: #d97706;
+      --bad-light: #c62828; --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+        --bad: var(--bad-light); --purple: var(--purple-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+      --bad: var(--bad-light); --purple: var(--purple-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px; line-height: 1.35; accent-color: var(--accent);
+    }
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .tablist {
+      display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 10px; overflow-x: auto;
+    }
+    .tablist [role="tab"] {
+      position: relative; flex: none; background: transparent; color: var(--muted);
+      border: none; padding: 7px 14px 9px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .tablist [role="tab"][aria-selected="true"] { color: var(--accent); }
+    .tablist [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; inset: auto 0 0; border-block-end: 3px solid var(--accent);
+    }
+
+    .panel-inner { display: grid; grid-template-columns: minmax(270px, 0.82fr) minmax(0, 1.38fr); gap: 12px; align-items: start; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .card-title { font-weight: 700; font-size: 13px; margin-bottom: 7px; }
+
+    .ctrl-row { margin-bottom: 8px; }
+    .ctrl-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px; }
+    .ctrl-head strong { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; }
+
+    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .btn {
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 4px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme .btn.primary { color: #0f172a; }
+
+    .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+    .kv { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+    .kv-lbl { font-size: 11px; color: var(--muted); }
+    .kv-val { font-size: 14.5px; font-weight: 700; font-family: ui-monospace, monospace; }
+
+    canvas.plot {
+      width: 100%; height: 345px; display: block;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Coverage and AAF labs">
+    <button type="button" role="tab" id="tab-binom" aria-selected="true">1. Binomial Dropout &amp; −F Miss Rate</button>
+    <button type="button" role="tab" id="tab-cohort" aria-selected="false">2. Exome Cohort AAF Spectrum</button>
+  </div>
+
+  <!-- TAB 1: Binomial PMF -->
+  <div role="tabpanel" id="panel-binom" aria-labelledby="tab-binom">
+    <div class="panel-inner">
+      <div class="card">
+        <div class="card-title">Heterozygote (0/1) Sampling Controls</div>
+        <div class="btn-row">
+          <button type="button" class="btn" data-dp="4">DP=4 (BRCA1 med)</button>
+          <button type="button" class="btn" data-dp="10">DP=10</button>
+          <button type="button" class="btn primary" data-dp="15">DP=15 (HW)</button>
+          <button type="button" class="btn" data-dp="40">DP=40 (rs3092994)</button>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Read Depth n</span><strong id="lbl-n">15</strong></div>
+          <input type="range" id="rng-n" min="2" max="100" step="1" value="15">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>ALT Sampling Prob p_alt (Ref Bias)</span><strong id="lbl-palt">0.50</strong></div>
+          <input type="range" id="rng-palt" min="0.35" max="0.50" step="0.01" value="0.50">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>freebayes Pre-Filter −F (min AAF)</span><strong id="lbl-fcut">0.20</strong></div>
+          <input type="range" id="rng-fcut" min="0.05" max="0.35" step="0.01" value="0.20">
+        </div>
+
+        <div class="kv-grid">
+          <div class="kv"><div class="kv-lbl">Allelic Dropout P(k=0 or n)</div><div class="kv-val" id="kv-drop">—</div></div>
+          <div class="kv"><div class="kv-lbl">Missed by −F: P(k/n &lt; F)</div><div class="kv-val" id="kv-miss">—</div></div>
+          <div class="kv"><div class="kv-lbl">SD(AAF | 0/1)</div><div class="kv-val" id="kv-sd">—</div></div>
+          <div class="kv"><div class="kv-lbl">Expected 95% AAF Span</div><div class="kv-val" id="kv-span">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Exact Binomial PMF: k ALT Reads out of Depth n</div>
+        <canvas class="plot" id="pmf-canvas" width="760" height="345"></canvas>
+        <div class="legend">
+          <span><span class="dot" style="background:#ef5350;"></span>Allelic dropout (k = 0 or k = n → looks hom!)</span>
+          <span><span class="dot" style="background:#ffb74d;"></span>Filtered out by −F (k/n &lt; F)</span>
+          <span><span class="dot" style="background:#64b5f6;"></span>Called heterozygous zone</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Cohort AAF Histogram -->
+  <div role="tabpanel" id="panel-cohort" aria-labelledby="tab-cohort" hidden>
+    <div class="panel-inner">
+      <div class="card">
+        <div class="card-title">Synthetic Diploid Variant Cohort (200 Sites)</div>
+        <div class="btn-row">
+          <button type="button" class="btn" id="btn-raw">Raw Off-Target (DP≈5)</button>
+          <button type="button" class="btn primary" id="btn-filt">Filtered Exome (DP≈40)</button>
+          <button type="button" class="btn" id="btn-reseed">Resample</button>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Mean Read Depth DP</span><strong id="lbl-cdp">40</strong></div>
+          <input type="range" id="rng-cdp" min="3" max="120" step="1" value="40">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Het Fraction (vs. Hom-Alt 1/1)</span><strong id="lbl-het">65%</strong></div>
+          <input type="range" id="rng-het" min="0.20" max="0.90" step="0.05" value="0.65">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Reference Mapping Bias (Het p_alt)</span><strong id="lbl-cbias">0.48</strong></div>
+          <input type="range" id="rng-cbias" min="0.38" max="0.50" step="0.01" value="0.48">
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><span>Low-AAF Artifacts (Strand/Error)</span><strong id="lbl-art">8%</strong></div>
+          <input type="range" id="rng-art" min="0" max="0.30" step="0.02" value="0.08">
+        </div>
+
+        <div class="kv-grid">
+          <div class="kv"><div class="kv-lbl">False 1/1 Dropouts (of Hets)</div><div class="kv-val" id="kv-fhom">—</div></div>
+          <div class="kv"><div class="kv-lbl">Mean Observed Het AAF</div><div class="kv-val" id="kv-mhet">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Observed Alternate Allele Fraction (AAF) Histogram</div>
+        <canvas class="plot" id="hist-canvas" width="760" height="345"></canvas>
+        <div class="legend">
+          <span><span class="dot" style="background:#66bb6a;"></span>True Heterozygotes (0/1)</span>
+          <span><span class="dot" style="background:#64b5f6;"></span>True Hom-Alt (1/1)</span>
+          <span><span class="dot" style="background:#ef5350;"></span>Artifacts / Mosaic noise</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderBinom(); renderCohort();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderBinom(); else renderCohort(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // Log-gamma / exact binomial PMF in log space (stable up to n = 1000+)
+    function logFactorial(n) {
+      let s = 0;
+      for (let i = 2; i <= n; i++) s += Math.log(i);
+      return s;
+    }
+    function binomPMF(k, n, p) {
+      if (k < 0 || k > n) return 0;
+      if (p <= 0) return k === 0 ? 1 : 0;
+      if (p >= 1) return k === n ? 1 : 0;
+      const logC = logFactorial(n) - logFactorial(k) - logFactorial(n - k);
+      return Math.exp(logC + k * Math.log(p) + (n - k) * Math.log(1 - p));
+    }
+
+    function binomStats(n, pAlt, fCut) {
+      const pmf = [];
+      let pMiss = 0;
+      for (let k = 0; k <= n; k++) {
+        const pr = binomPMF(k, n, pAlt);
+        pmf.push(pr);
+        if (k / n < fCut - 1e-12) pMiss += pr;
+      }
+      const pDrop = pmf[0] + pmf[n];
+      const sd = Math.sqrt(pAlt * (1 - pAlt) / n);
+      return { pmf, pDrop, pMiss, sd };
+    }
+
+    function fmtPct(v) {
+      if (v >= 0.01) return (v * 100).toFixed(2) + '%';
+      if (v >= 1e-5) return (v * 100).toFixed(4) + '%';
+      return v.toExponential(2);
+    }
+
+    function renderBinom() {
+      const n = parseInt($('rng-n').value, 10);
+      const pAlt = parseFloat($('rng-palt').value);
+      const fCut = parseFloat($('rng-fcut').value);
+      $('lbl-n').textContent = String(n);
+      $('lbl-palt').textContent = pAlt.toFixed(2);
+      $('lbl-fcut').textContent = fCut.toFixed(2);
+
+      const { pmf, pDrop, pMiss, sd } = binomStats(n, pAlt, fCut);
+      $('kv-drop').textContent = fmtPct(pDrop);
+      $('kv-drop').style.color = pDrop > 0.01 ? 'var(--bad)' : 'var(--good)';
+      $('kv-miss').textContent = fmtPct(pMiss);
+      $('kv-sd').textContent = sd.toFixed(3);
+      $('kv-span').textContent = `[${Math.max(0, pAlt - 1.96 * sd).toFixed(2)}, ${Math.min(1, pAlt + 1.96 * sd).toFixed(2)}]`;
+
+      const canvas = $('pmf-canvas');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+
+      const st = getComputedStyle(document.documentElement);
+      const textCol = st.getPropertyValue('--text').trim() || '#e8ecf2';
+      const mutedCol = st.getPropertyValue('--muted').trim() || '#9aa3b2';
+      const borderCol = st.getPropertyValue('--border').trim() || '#3d4350';
+
+      ctx.clearRect(0, 0, W, H);
+      const padL = 48, padR = 16, padT = 20, padB = 38;
+      const pw = W - padL - padR, ph = H - padT - padB;
+      const maxP = Math.max(...pmf) * 1.15;
+
+      // Grid
+      ctx.strokeStyle = borderCol; ctx.lineWidth = 0.7;
+      ctx.font = '11px ui-monospace, monospace'; ctx.fillStyle = mutedCol;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + ph - (i / 4) * ph;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText(((i / 4) * maxP).toFixed(2), padL - 6, y + 4);
+      }
+
+      const barW = Math.max(2, (pw / (n + 1)) * 0.82);
+      for (let k = 0; k <= n; k++) {
+        const aaf = k / n;
+        const cx = padL + ((k + 0.5) / (n + 1)) * pw;
+        const bh = (pmf[k] / maxP) * ph;
+        let col = '#64b5f6';
+        if (k === 0 || k === n) col = '#ef5350';
+        else if (aaf < fCut - 1e-12) col = '#ffb74d';
+        ctx.fillStyle = col;
+        ctx.fillRect(cx - barW / 2, padT + ph - bh, barW, bh);
+      }
+
+      // -F threshold line
+      const fx = padL + ((fCut * n + 0.5) / (n + 1)) * pw;
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#ffb74d'; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(fx, padT); ctx.lineTo(fx, padT + ph); ctx.stroke();
+      ctx.fillStyle = '#ffb74d'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`−F = ${fCut.toFixed(2)}`, fx + 4, padT + 14);
+      ctx.restore();
+
+      // X ticks
+      ctx.fillStyle = mutedCol; ctx.font = '11px ui-monospace, monospace'; ctx.textAlign = 'center';
+      [0, 0.25, 0.5, 0.75, 1.0].forEach(v => {
+        const x = padL + ((v * n + 0.5) / (n + 1)) * pw;
+        ctx.fillText(v.toFixed(2), x, H - padB + 15);
+      });
+      ctx.fillStyle = textCol; ctx.font = '12px sans-serif';
+      ctx.fillText(`Alternate Allele Fraction  k / n   (n = ${n} reads)`, padL + pw / 2, H - 5);
+    }
+
+    // ---- TAB 2: Cohort AAF Spectrum ----
+    let cohortSeed = 101;
+    function mulberry32(a) {
+      return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function renderCohort() {
+      const meanDP = parseInt($('rng-cdp').value, 10);
+      const hetFrac = parseFloat($('rng-het').value);
+      const hetBias = parseFloat($('rng-cbias').value);
+      const artFrac = parseFloat($('rng-art').value);
+      $('lbl-cdp').textContent = String(meanDP);
+      $('lbl-het').textContent = Math.round(hetFrac * 100) + '%';
+      $('lbl-cbias').textContent = hetBias.toFixed(2);
+      $('lbl-art').textContent = Math.round(artFrac * 100) + '%';
+
+      const rng = mulberry32(cohortSeed);
+      const nBins = 20;
+      const bHet = Array(nBins).fill(0), bHom = Array(nBins).fill(0), bArt = Array(nBins).fill(0);
+      let nHet = 0, falseHom = 0, sumHetAAF = 0;
+
+      for (let s = 0; s < 200; s++) {
+        const dp = Math.max(2, Math.round(meanDP * (0.6 + 0.8 * rng())));
+        const u = rng();
+        let kind, pTrue;
+        if (u < artFrac) { kind = 'art'; pTrue = 0.12 + 0.18 * rng(); }
+        else if (u < artFrac + (1 - artFrac) * hetFrac) { kind = 'het'; pTrue = hetBias; }
+        else { kind = 'hom'; pTrue = 0.995; }
+
+        let k = 0;
+        for (let r = 0; r < dp; r++) if (rng() < pTrue) k++;
+        const aaf = k / dp;
+        const bi = Math.min(nBins - 1, Math.floor(aaf * nBins));
+        if (kind === 'het') {
+          nHet++; sumHetAAF += aaf;
+          if (k === dp) falseHom++;
+          bHet[bi]++;
+        } else if (kind === 'hom') bHom[bi]++;
+        else bArt[bi]++;
+      }
+
+      $('kv-fhom').textContent = nHet ? `${falseHom} / ${nHet} (${(100 * falseHom / nHet).toFixed(1)}%)` : '0';
+      $('kv-mhet').textContent = nHet ? (sumHetAAF / nHet).toFixed(3) : '—';
+
+      const canvas = $('hist-canvas');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+
+      const st = getComputedStyle(document.documentElement);
+      const textCol = st.getPropertyValue('--text').trim() || '#e8ecf2';
+      const mutedCol = st.getPropertyValue('--muted').trim() || '#9aa3b2';
+      const borderCol = st.getPropertyValue('--border').trim() || '#3d4350';
+
+      ctx.clearRect(0, 0, W, H);
+      const padL = 44, padR = 16, padT = 18, padB = 38;
+      const pw = W - padL - padR, ph = H - padT - padB;
+      const totals = bHet.map((v, i) => v + bHom[i] + bArt[i]);
+      const maxC = Math.max(10, ...totals) * 1.12;
+
+      ctx.strokeStyle = borderCol; ctx.lineWidth = 0.7;
+      ctx.font = '11px ui-monospace, monospace'; ctx.fillStyle = mutedCol;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + ph - (i / 4) * ph;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText(String(Math.round((i / 4) * maxC)), padL - 6, y + 4);
+      }
+
+      const bw = pw / nBins;
+      for (let i = 0; i < nBins; i++) {
+        const x = padL + i * bw + 1.5;
+        const w = Math.max(2, bw - 3);
+        let yCur = padT + ph;
+        const drawSeg = (cnt, col) => {
+          if (!cnt) return;
+          const h = (cnt / maxC) * ph;
+          yCur -= h;
+          ctx.fillStyle = col;
+          ctx.fillRect(x, yCur, w, h);
+        };
+        drawSeg(bArt[i], '#ef5350');
+        drawSeg(bHet[i], '#66bb6a');
+        drawSeg(bHom[i], '#64b5f6');
+      }
+
+      // 0.5 dashed marker
+      ctx.save();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = textCol; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(padL + pw * 0.5, padT); ctx.lineTo(padL + pw * 0.5, padT + ph); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = mutedCol; ctx.font = '11px ui-monospace, monospace'; ctx.textAlign = 'center';
+      [0, 0.25, 0.5, 0.75, 1.0].forEach(v => ctx.fillText(v.toFixed(2), padL + v * pw, H - padB + 15));
+      ctx.fillStyle = textCol; ctx.font = '12px sans-serif';
+      ctx.fillText('Alternate Allele Fraction (AAF = AO / (RO + AO))', padL + pw / 2, H - 5);
+    }
+
+    document.querySelectorAll('button[data-dp]').forEach(b => {
+      b.addEventListener('click', () => { $('rng-n').value = b.dataset.dp; renderBinom(); });
+    });
+    ['rng-n', 'rng-palt', 'rng-fcut'].forEach(id => $(id).addEventListener('input', renderBinom));
+    ['rng-cdp', 'rng-het', 'rng-cbias', 'rng-art'].forEach(id => $(id).addEventListener('input', renderCohort));
+    $('btn-raw').addEventListener('click', () => { $('rng-cdp').value = 5; $('rng-art').value = 0.20; renderCohort(); });
+    $('btn-filt').addEventListener('click', () => { $('rng-cdp').value = 40; $('rng-art').value = 0.04; renderCohort(); });
+    $('btn-reseed').addEventListener('click', () => { cohortSeed += 97; renderCohort(); });
+
+    new ResizeObserver(() => { renderBinom(); renderCohort(); }).observe($('pmf-canvas'));
+    window.__covLab = { binomPMF, binomStats };
+    renderBinom();
+    renderCohort();
+  </script>
+</body>
+</html>
+

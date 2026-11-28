@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Indel Normalization (Tan et al.) &amp; BGZF/BAI Index Explorer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228; --surface-dark: #2a2e37; --surface2-dark: #181a20;
+      --border-dark: #3d4350; --text-dark: #e8ecf2; --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6; --good-dark: #66bb6a; --warn-dark: #ffb74d;
+      --bad-dark: #ef5350; --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb; --surface-light: #ffffff; --surface2-light: #eef2f7;
+      --border-light: #d4dce6; --text-light: #1a202c; --muted-light: #5a6578;
+      --accent-light: #1565c0; --good-light: #2e7d32; --warn-light: #d97706;
+      --bad-light: #c62828; --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+        --bad: var(--bad-light); --purple: var(--purple-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+      --bad: var(--bad-light); --purple: var(--purple-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px; line-height: 1.35; accent-color: var(--accent);
+    }
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .tablist {
+      display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 10px; overflow-x: auto;
+    }
+    .tablist [role="tab"] {
+      position: relative; flex: none; background: transparent; color: var(--muted);
+      border: none; padding: 7px 14px 9px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .tablist [role="tab"][aria-selected="true"] { color: var(--accent); }
+    .tablist [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; inset: auto 0 0; border-block-end: 3px solid var(--accent);
+    }
+
+    .top-bar {
+      display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+    }
+    .field { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+    select, button.btn {
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 4px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    button.btn:hover { border-color: var(--accent); color: var(--accent); }
+    button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    :root.dark-theme button.btn.primary { color: #0f172a; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+    .card-title { font-weight: 700; font-size: 13px; margin-bottom: 7px; display: flex; justify-content: space-between; align-items: center; }
+
+    .base-strip {
+      display: flex; gap: 3px; flex-wrap: nowrap; overflow-x: auto; padding: 6px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .base-col { display: flex; flex-direction: column; align-items: center; min-width: 28px; }
+    .base-pos { font-size: 9.5px; color: var(--muted); margin-bottom: 2px; }
+    .base-box {
+      width: 26px; height: 26px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--surface2); display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px;
+    }
+    .base-anchor { border: 2px solid var(--accent); background: rgba(100, 181, 246, 0.22); }
+    .base-ref-span { border: 2px solid var(--warn); background: rgba(255, 183, 77, 0.22); }
+    .base-del { border: 2px solid var(--bad); background: rgba(239, 83, 80, 0.24); }
+    .base-ins { border: 2px solid var(--good); background: rgba(102, 187, 106, 0.24); }
+
+    .vcf-line {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    }
+    .badge {
+      padding: 2px 7px; border-radius: 4px; font-size: 11.5px; font-weight: 700;
+      font-family: ui-monospace, monospace;
+    }
+    .badge-ok { background: rgba(102, 187, 106, 0.2); color: var(--good); }
+    .badge-warn { background: rgba(255, 183, 77, 0.2); color: var(--warn); }
+
+    .step-list {
+      margin: 6px 0 0; padding: 0; list-style: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+      max-height: 150px; overflow-y: auto;
+    }
+    .step-list li { padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; border: 1px solid transparent; }
+    .step-list li.active-step { background: rgba(100, 181, 246, 0.18); border-color: var(--accent); font-weight: 700; }
+
+    /* Tab 2: BGZF / BAI */
+    .bin-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .bin-lbl { width: 120px; font-size: 11.5px; font-weight: 700; color: var(--muted); flex-shrink: 0; text-align: right; }
+    .bin-track { flex: 1; height: 22px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; position: relative; overflow: hidden; }
+    .bin-hit { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.85; min-width: 4px; }
+    .bin-ids { width: 185px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); flex-shrink: 0; }
+
+    .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 11px; color: var(--muted); }
+    .kpi-val { font-size: 14.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Indel normalization and BGZF index labs">
+    <button type="button" role="tab" id="tab-norm" aria-selected="true">1. Parsimonious Left-Alignment (Tan et al.)</button>
+    <button type="button" role="tab" id="tab-bai" aria-selected="false">2. BGZF &amp; BAI Hierarchical Bin Lookup</button>
+  </div>
+
+  <!-- TAB 1: Indel Normalization -->
+  <div role="tabpanel" id="panel-norm" aria-labelledby="tab-norm">
+    <div class="top-bar">
+      <label class="field">Preset:
+        <select id="norm-preset" aria-label="Indel preset">
+          <option value="brca1">BRCA1 rs8176144 (43097346 TAAAAAAAT &gt; TAAAAAAT)</option>
+          <option value="rightdel">Right-Shifted Homopolymer Del (105 AA &gt; A → 100 TA &gt; T)</option>
+          <option value="dinuc">Tandem Dinucleotide Repeat (106 CAC &gt; C → 100 GAC &gt; G)</option>
+          <option value="ins">Right-Shifted Insertion (106 G &gt; GG → 101 C &gt; CG)</option>
+        </select>
+      </label>
+      <div style="display:inline-flex; gap:6px; margin-left:auto;">
+        <button type="button" class="btn" id="btn-n-prev">◀ Prev</button>
+        <button type="button" class="btn primary" id="btn-n-next">Next Step ▶</button>
+        <button type="button" class="btn" id="btn-n-all">Normalize</button>
+        <button type="button" class="btn" id="btn-n-reset">Reset</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>Reference Genome Context &amp; Active VCF Allele Span</span>
+        <span id="inv-badge" class="badge badge-ok">✓ Mutated Genome Identical</span>
+      </div>
+      <div class="base-strip" id="ref-strip"></div>
+      <div class="vcf-line" id="vcf-line"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>Algorithm Trace (Tan, Abecasis &amp; Kang, 2015)</span>
+        <span id="canon-badge" class="badge badge-warn">Not Yet Canonical</span>
+      </div>
+      <ul class="step-list" id="step-list"></ul>
+    </div>
+  </div>
+
+  <!-- TAB 2: BGZF / BAI -->
+  <div role="tabpanel" id="panel-bai" aria-labelledby="tab-bai" hidden>
+    <div class="top-bar">
+      <button type="button" class="btn primary" id="btn-brca1">Jump to BRCA1 (43.04–43.17 Mb)</button>
+      <button type="button" class="btn" id="btn-tp53">Jump to TP53 (7.66–7.69 Mb)</button>
+      <label class="field">Start (Mb):
+        <input type="range" id="rng-start" min="1" max="80" step="0.1" value="43.04" style="width:120px;">
+        <strong id="lbl-start" style="font-family:ui-monospace,monospace;color:var(--accent);">43.04</strong>
+      </label>
+      <label class="field">Window (kb):
+        <input type="range" id="rng-win" min="10" max="2000" step="10" value="126" style="width:110px;">
+        <strong id="lbl-win" style="font-family:ui-monospace,monospace;color:var(--accent);">126 kb</strong>
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>SAMv1 / BAI Hierarchical Binning Tree on chr17 (83.26 Mb)</span>
+        <span id="bai-region-lbl" style="font-family:ui-monospace,monospace;font-size:12px;color:var(--accent);"></span>
+      </div>
+      <div id="bai-levels"></div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-lbl">Overlapping BAI Bins</div><div class="kpi-val" id="kpi-bins">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Est. CRAM Slice Transferred</div><div class="kpi-val" id="kpi-mb">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Remote File Skipped (15 GB Exome)</div><div class="kpi-val" id="kpi-skip">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Exact Tan, Abecasis & Kang (2015) Indel Normalization ----
+    function applyVariant(refSeq, refStart, pos, ref, alt) {
+      const idx = pos - refStart;
+      return refSeq.slice(0, idx) + alt + refSeq.slice(idx + ref.length);
+    }
+
+    function normalizeIndelTrace(refSeq, refStart, pos, ref, alt) {
+      const origMut = applyVariant(refSeq, refStart, pos, ref, alt);
+      const steps = [{
+        pos, ref, alt,
+        action: `Initial VCF record: POS=${pos}  ${ref} > ${alt}`,
+        invariantOk: true
+      }];
+
+      let p = pos, r = ref, a = alt;
+      let guard = 0;
+      while (guard++ < 60) {
+        if (r.length > 0 && a.length > 0 && r[r.length - 1] === a[a.length - 1]) {
+          let note;
+          if (r.length === 1 || a.length === 1) {
+            if (p <= refStart) break;
+            p -= 1;
+            const prevBase = refSeq[p - refStart];
+            r = prevBase + r.slice(0, -1);
+            a = prevBase + a.slice(0, -1);
+            note = `Left-shift across repeat (prepend '${prevBase}' at ${p}, trim right): POS=${p}  ${r} > ${a}`;
+          } else {
+            const trimmed = r[r.length - 1];
+            r = r.slice(0, -1);
+            a = a.slice(0, -1);
+            note = `Right-trim shared suffix '${trimmed}': POS=${p}  ${r} > ${a}`;
+          }
+          const ok = applyVariant(refSeq, refStart, p, r, a) === origMut;
+          steps.push({ pos: p, ref: r, alt: a, action: note, invariantOk: ok });
+        } else {
+          break;
+        }
+      }
+
+      while (r.length >= 2 && a.length >= 2 && r[0] === a[0]) {
+        const trimmed = r[0];
+        p += 1;
+        r = r.slice(1);
+        a = a.slice(1);
+        const ok = applyVariant(refSeq, refStart, p, r, a) === origMut;
+        steps.push({
+          pos: p, ref: r, alt: a,
+          action: `Left-trim redundant prefix '${trimmed}' (keep ≥1 anchor): POS=${p}  ${r} > ${a}`,
+          invariantOk: ok
+        });
+      }
+
+      return { steps, origMut };
+    }
+
+    const NORM_PRESETS = {
+      brca1:    { refSeq: 'GCTAAAAAAATCGGA', refStart: 43097344, pos: 43097346, ref: 'TAAAAAAAT', alt: 'TAAAAAAT' },
+      rightdel: { refSeq: 'CCGTTAAAAAAACGG', refStart: 96,       pos: 105,      ref: 'AA',        alt: 'A' },
+      dinuc:    { refSeq: 'TTGGACACACACTTG', refStart: 97,       pos: 106,      ref: 'CAC',       alt: 'C' },
+      ins:      { refSeq: 'ATTCCGGGGGGTTAA', refStart: 97,       pos: 106,      ref: 'G',         alt: 'GG' }
+    };
+
+    let normTrace = null, normPreset = null, normIdx = 0;
+
+    function loadNormPreset(key) {
+      normPreset = NORM_PRESETS[key];
+      normTrace = normalizeIndelTrace(normPreset.refSeq, normPreset.refStart, normPreset.pos, normPreset.ref, normPreset.alt);
+      normIdx = 0;
+      renderNorm();
+    }
+
+    function renderNorm() {
+      const st = normTrace.steps[normIdx];
+      const isFinal = normIdx === normTrace.steps.length - 1;
+      const startOff = st.pos - normPreset.refStart;
+      const endOff = startOff + st.ref.length;
+
+      let html = '';
+      for (let i = 0; i < normPreset.refSeq.length; i++) {
+        const gpos = normPreset.refStart + i;
+        let cls = 'base-box';
+        if (i === startOff) cls += ' base-anchor';
+        else if (i > startOff && i < endOff) cls += (st.ref.length > st.alt.length ? ' base-del' : ' base-ref-span');
+        const shortPos = gpos > 1000 ? '…' + String(gpos).slice(-3) : String(gpos);
+        html += `<div class="base-col"><span class="base-pos">${shortPos}</span><span class="${cls}">${normPreset.refSeq[i]}</span></div>`;
+      }
+      $('ref-strip').innerHTML = html;
+
+      const mutStr = applyVariant(normPreset.refSeq, normPreset.refStart, st.pos, st.ref, st.alt);
+      $('vcf-line').innerHTML =
+        `<span><strong>POS:</strong> ${st.pos}</span>` +
+        `<span><strong>REF:</strong> <span style="color:var(--warn);font-weight:700;">${st.ref}</span></span>` +
+        `<span><strong>ALT:</strong> <span style="color:var(--good);font-weight:700;">${st.alt}</span></span>` +
+        `<span style="margin-left:auto;color:var(--muted);">Mutated Seq: <strong style="color:var(--text);">${mutStr}</strong></span>`;
+
+      $('inv-badge').textContent = st.invariantOk ? '✓ Mutated Genome Identical' : '✗ Mismatch!';
+      $('canon-badge').className = isFinal ? 'badge badge-ok' : 'badge badge-warn';
+      $('canon-badge').textContent = isFinal ? '✓ Canonical (Parsimonious + Left-Aligned)' : `Step ${normIdx + 1} / ${normTrace.steps.length}`;
+
+      $('step-list').innerHTML = normTrace.steps.map((s, idx) =>
+        `<li class="${idx === normIdx ? 'active-step' : ''}" data-idx="${idx}">${idx}. ${s.action}</li>`
+      ).join('');
+    }
+
+    $('norm-preset').addEventListener('change', (e) => loadNormPreset(e.target.value));
+    $('btn-n-prev').addEventListener('click', () => { normIdx = Math.max(0, normIdx - 1); renderNorm(); });
+    $('btn-n-next').addEventListener('click', () => { normIdx = Math.min(normTrace.steps.length - 1, normIdx + 1); renderNorm(); });
+    $('btn-n-all').addEventListener('click', () => { normIdx = normTrace.steps.length - 1; renderNorm(); });
+    $('btn-n-reset').addEventListener('click', () => { normIdx = 0; renderNorm(); });
+    $('step-list').addEventListener('click', (e) => {
+      const li = e.target.closest('li[data-idx]');
+      if (!li) return;
+      normIdx = parseInt(li.dataset.idx, 10);
+      renderNorm();
+    });
+
+    // ---- TAB 2: Exact SAMv1 BAI reg2bins(beg, end) (0-based half-open) ----
+    function reg2bins(beg, end) {
+      const e = end - 1;
+      const levels = [
+        { name: 'Lvl 0 (512 Mb)', size: 1 << 29, bins: [0] },
+        { name: 'Lvl 1 (64 Mb)',  size: 1 << 26, bins: [] },
+        { name: 'Lvl 2 (8 Mb)',   size: 1 << 23, bins: [] },
+        { name: 'Lvl 3 (1 Mb)',   size: 1 << 20, bins: [] },
+        { name: 'Lvl 4 (128 kb)', size: 1 << 17, bins: [] },
+        { name: 'Lvl 5 (16 kb)',  size: 1 << 14, bins: [] }
+      ];
+      for (let k = 1 + (beg >> 26); k <= 1 + (e >> 26); k++) levels[1].bins.push(k);
+      for (let k = 9 + (beg >> 23); k <= 9 + (e >> 23); k++) levels[2].bins.push(k);
+      for (let k = 73 + (beg >> 20); k <= 73 + (e >> 20); k++) levels[3].bins.push(k);
+      for (let k = 585 + (beg >> 17); k <= 585 + (e >> 17); k++) levels[4].bins.push(k);
+      for (let k = 4681 + (beg >> 14); k <= 4681 + (e >> 14); k++) levels[5].bins.push(k);
+      return levels;
+    }
+
+    const CHR17_LEN = 83257441;
+    function renderBAI() {
+      const startMb = parseFloat($('rng-start').value);
+      const winKb = parseInt($('rng-win').value, 10);
+      $('lbl-start').textContent = startMb.toFixed(2);
+      $('lbl-win').textContent = `${winKb} kb`;
+
+      const beg = Math.floor(startMb * 1e6);
+      const end = Math.min(CHR17_LEN, beg + winKb * 1000);
+      $('bai-region-lbl').textContent = `chr17:${(beg + 1).toLocaleString()}-${end.toLocaleString()}`;
+
+      const levels = reg2bins(beg, end);
+      const offsets = [0, 1, 9, 73, 585, 4681];
+      let totalBins = 0;
+      let html = '';
+      levels.forEach((lv, li) => {
+        totalBins += lv.bins.length;
+        const firstIdx = lv.bins[0] - offsets[li];
+        const lastIdx = lv.bins[lv.bins.length - 1] - offsets[li];
+        const leftPct = Math.max(0, (firstIdx * lv.size / CHR17_LEN) * 100);
+        const rightPct = Math.min(100, ((lastIdx + 1) * lv.size / CHR17_LEN) * 100);
+        const idTxt = lv.bins.length === 1 ? `bin ${lv.bins[0]}` : `bins ${lv.bins[0]}..${lv.bins[lv.bins.length - 1]} (${lv.bins.length})`;
+        html += `<div class="bin-row"><div class="bin-lbl">${lv.name}</div><div class="bin-track"><div class="bin-hit" style="left:${leftPct.toFixed(2)}%;width:${Math.max(0.8, rightPct - leftPct).toFixed(2)}%;"></div></div><div class="bin-ids">${idTxt}</div></div>`;
+      });
+      $('bai-levels').innerHTML = html;
+
+      // Estimate proportional transfer from 15 GB CRAM (human ~3.1 Gb, exome-enriched ~16 KB/kb in target loci)
+      const estMB = Math.max(0.25, (winKb / 126) * 2.0);
+      const skipPct = Math.max(0, (1 - estMB / 15000) * 100);
+      $('kpi-bins').textContent = `${totalBins} bins`;
+      $('kpi-mb').textContent = `~${estMB.toFixed(2)} MB`;
+      $('kpi-skip').textContent = `${skipPct.toFixed(3)}% skipped`;
+    }
+
+    $('btn-brca1').addEventListener('click', () => { $('rng-start').value = 43.04; $('rng-win').value = 126; renderBAI(); });
+    $('btn-tp53').addEventListener('click', () => { $('rng-start').value = 7.66; $('rng-win').value = 30; renderBAI(); });
+    $('rng-start').addEventListener('input', renderBAI);
+    $('rng-win').addEventListener('input', renderBAI);
+
+    window.__normLab = { normalizeIndelTrace, reg2bins, applyVariant };
+    loadNormPreset('brca1');
+    renderBAI();
+  </script>
+</body>
+</html>

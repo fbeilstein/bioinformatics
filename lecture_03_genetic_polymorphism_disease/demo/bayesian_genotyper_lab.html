@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Bayesian Diploid Genotyper, HWE Prior &amp; Log-Sum-Exp Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-dark: #1f2228; --surface-dark: #2a2e37; --surface2-dark: #181a20;
+      --border-dark: #3d4350; --text-dark: #e8ecf2; --muted-dark: #9aa3b2;
+      --accent-dark: #64b5f6; --good-dark: #66bb6a; --warn-dark: #ffb74d;
+      --bad-dark: #ef5350; --purple-dark: #ce93d8;
+
+      --bg-light: #f6f8fb; --surface-light: #ffffff; --surface2-light: #eef2f7;
+      --border-light: #d4dce6; --text-light: #1a202c; --muted-light: #5a6578;
+      --accent-light: #1565c0; --good-light: #2e7d32; --warn-light: #d97706;
+      --bad-light: #c62828; --purple-light: #7b1fa2;
+
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark-theme) {
+        --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+        --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+        --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+        --bad: var(--bad-light); --purple: var(--purple-light);
+      }
+    }
+    :root.light-theme {
+      color-scheme: light;
+      --bg: var(--bg-light); --surface: var(--surface-light); --surface2: var(--surface2-light);
+      --border: var(--border-light); --text: var(--text-light); --muted: var(--muted-light);
+      --accent: var(--accent-light); --good: var(--good-light); --warn: var(--warn-light);
+      --bad: var(--bad-light); --purple: var(--purple-light);
+    }
+    :root.dark-theme {
+      color-scheme: dark;
+      --bg: var(--bg-dark); --surface: var(--surface-dark); --surface2: var(--surface2-dark);
+      --border: var(--border-dark); --text: var(--text-dark); --muted: var(--muted-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark); --warn: var(--warn-dark);
+      --bad: var(--bad-dark); --purple: var(--purple-dark);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px; line-height: 1.35; accent-color: var(--accent);
+    }
+    @supports not (accent-color: auto) {
+      input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(to right, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%));
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+        background: var(--accent); margin-top: -4px; cursor: pointer;
+      }
+    }
+
+    .top-bar {
+      display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+    }
+    .field { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+    select {
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 4px 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    }
+
+    .main-grid {
+      display: grid; grid-template-columns: minmax(270px, 0.85fr) minmax(0, 1.35fr);
+      gap: 12px; align-items: start;
+    }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px;
+    }
+    .panel-title { font-weight: 700; font-size: 13px; margin-bottom: 7px; }
+
+    .ctrl-row { margin-bottom: 7px; }
+    .ctrl-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px; }
+    .ctrl-head strong { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+    .kpi {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 8px;
+    }
+    .kpi-lbl { font-size: 10.5px; color: var(--muted); }
+    .kpi-val { font-size: 15px; font-weight: 800; font-family: ui-monospace, monospace; }
+
+    .bar-row { display: grid; grid-template-columns: 44px 1fr 78px; gap: 8px; align-items: center; margin-bottom: 5px; font-family: ui-monospace, monospace; font-size: 12px; }
+    .bar-track { height: 18px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; transition: width 0.12s ease; }
+
+    .table-wrapper {
+      overflow: auto; max-inline-size: 100%;
+      border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); margin-bottom: 8px;
+    }
+    table.calc {
+      border-collapse: separate; border-spacing: 0; width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; text-align: right;
+    }
+    table.calc th {
+      position: sticky; inset-block-start: 0; background: var(--surface); color: var(--text);
+      padding: 4px 6px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-weight: 700;
+    }
+    table.calc tbody th { position: sticky; inset-inline-start: 0; text-align: left; }
+    table.calc td { padding: 4px 6px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+    table.calc tr.win-row td, table.calc tr.win-row th { background: rgba(102, 187, 106, 0.16); font-weight: 700; }
+
+    canvas#phase-canvas {
+      width: 100%; height: 182px; display: block;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    }
+
+    .alert-box {
+      font-size: 11.5px; padding: 6px 8px; border-radius: 6px; margin-top: 6px;
+      border: 1px solid var(--border); background: var(--surface2);
+    }
+    .alert-warn { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+    .alert-bad  { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <label class="field">Preset:
+      <select id="preset-sel" aria-label="Genotyping preset">
+        <option value="rs3092994">BRCA1 rs3092994 Het (21 REF / 19 ALT, Q33)</option>
+        <option value="flip">Weak-Depth Prior Flip (0 REF / 2 ALT, Q30)</option>
+        <option value="paradox">High QUAL, Low GQ Paradox (0 REF / 5 ALT, f=0.01)</option>
+        <option value="q6noise">Binned Q6 Error Suppression (15 REF Q33 / 4 ALT Q6)</option>
+        <option value="q0crash">Q = 0 Boundary Trap (toggle Clip ε!)</option>
+        <option value="pcrdup">PCR Duplicate Inflation (10 REF / 10× Dup Error)</option>
+        <option value="underflow">Float64 Underflow (550 REF / 550 ALT — BRCA1 1,100×)</option>
+      </select>
+    </label>
+    <label class="field">Model:
+      <select id="model-sel" aria-label="Error model">
+        <option value="biallelic">Biallelic (Practice 3: ε / 1−ε)</option>
+        <option value="fourbase">Exact 4-Base (ε/3 per wrong base)</option>
+      </select>
+    </label>
+    <label class="field" style="cursor:pointer;"><input type="checkbox" id="chk-flat"> Flat Prior</label>
+    <label class="field" style="cursor:pointer;"><input type="checkbox" id="chk-clip" checked> Clip ε ∈ (0,1)</label>
+  </div>
+
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-title">Read Evidence &amp; HWE Population Prior</div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-head"><span>REF Reads (RO)</span><strong id="lbl-ro">21</strong></div>
+        <input type="range" id="rng-ro" min="0" max="600" step="1" value="21">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-head"><span>ALT Reads (AO)</span><strong id="lbl-ao">19</strong></div>
+        <input type="range" id="rng-ao" min="0" max="600" step="1" value="19">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-head"><span>REF Base Quality Q_ref</span><strong id="lbl-qr">Q33 (ε = 0.05%)</strong></div>
+        <input type="range" id="rng-qr" min="0" max="40" step="1" value="33">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-head"><span>ALT Base Quality Q_alt</span><strong id="lbl-qa">Q33 (ε = 0.05%)</strong></div>
+        <input type="range" id="rng-qa" min="0" max="40" step="1" value="33">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-head"><span>Population Allele Frequency f (HWE)</span><strong id="lbl-f">0.0100</strong></div>
+        <input type="range" id="rng-logf" min="-4" max="-0.301" step="0.02" value="-2">
+      </div>
+
+      <div class="panel-title" style="margin-top:10px;">Posterior Probabilities P(G | D)</div>
+      <div class="bar-row"><span>0/0</span><div class="bar-track"><div id="bar-00" class="bar-fill" style="background:var(--accent);"></div></div><span id="txt-00">—</span></div>
+      <div class="bar-row"><span>0/1</span><div class="bar-track"><div id="bar-01" class="bar-fill" style="background:var(--good);"></div></div><span id="txt-01">—</span></div>
+      <div class="bar-row"><span>1/1</span><div class="bar-track"><div id="bar-11" class="bar-fill" style="background:var(--warn);"></div></div><span id="txt-11">—</span></div>
+
+      <div class="alert-box" id="status-note"></div>
+    </div>
+
+    <div class="panel">
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-lbl">MAP Genotype (GT)</div><div class="kpi-val" id="kpi-gt" style="color:var(--good);">0/1</div></div>
+        <div class="kpi"><div class="kpi-lbl">Site QUAL (Phred)</div><div class="kpi-val" id="kpi-qual">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Genotype GQ (Phred)</div><div class="kpi-val" id="kpi-gq">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Naive exp(ll) Check</div><div class="kpi-val" id="kpi-naive">—</div></div>
+      </div>
+
+      <div tabindex="0" role="region" aria-label="Bayesian log-space calculation breakdown" class="table-wrapper">
+        <table class="calc" id="calc-table"></table>
+      </div>
+
+      <div class="panel-title" style="margin-bottom:4px;">Prior vs. Data Phase Diagram (0 REF, n ALT at Q_alt)</div>
+      <canvas id="phase-canvas" width="640" height="182"></canvas>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      render();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    // Core pure Bayesian genotyping engine (exported for automated Python cross-check)
+    function runBayes(ro, ao, qr, qa, f, flat, model, clipEps) {
+      let epsR = Math.pow(10, -qr / 10);
+      let epsA = Math.pow(10, -qa / 10);
+      if (clipEps) {
+        epsR = Math.min(1 - 1e-12, Math.max(1e-12, epsR));
+        epsA = Math.min(1 - 1e-12, Math.max(1e-12, epsA));
+      }
+
+      let ll00, ll01, ll11;
+      if (model === 'fourbase') {
+        // Exact 4-base model: wrong specific base has probability eps/3
+        const pRef00 = 1 - epsR, pAlt00 = epsA / 3;
+        const pRef01 = 0.5 * (1 - epsR) + 0.5 * (epsR / 3);
+        const pAlt01 = 0.5 * (1 - epsA) + 0.5 * (epsA / 3);
+        const pRef11 = epsR / 3, pAlt11 = 1 - epsA;
+        ll00 = ro * Math.log(pRef00) + ao * Math.log(pAlt00);
+        ll01 = ro * Math.log(pRef01) + ao * Math.log(pAlt01);
+        ll11 = ro * Math.log(pRef11) + ao * Math.log(pAlt11);
+      } else {
+        // Biallelic model (Practice 3 Part 8)
+        ll00 = ro * Math.log(1 - epsR) + ao * Math.log(epsA);
+        ll01 = (ro + ao) * Math.log(0.5);
+        ll11 = ro * Math.log(epsR) + ao * Math.log(1 - epsA);
+      }
+
+      const priors = flat ? [1 / 3, 1 / 3, 1 / 3] : [(1 - f) * (1 - f), 2 * f * (1 - f), f * f];
+      const lp = priors.map(p => Math.log(p));
+      const lls = [ll00, ll01, ll11];
+      const lpost = [ll00 + lp[0], ll01 + lp[1], ll11 + lp[2]];
+
+      // Normalized VCF GL (log10 likelihood shifted so max = 0)
+      const maxLL = Math.max(...lls);
+      const gl = lls.map(v => (v - maxLL) / Math.LN10);
+
+      // Log-Sum-Exp normalization
+      const m = Math.max(...lpost);
+      const unnorm = lpost.map(v => Math.exp(v - m));
+      const Z = unnorm[0] + unnorm[1] + unnorm[2];
+      const post = unnorm.map(v => v / Z);
+
+      // Naive exp(ll) check (demonstrating float64 underflow)
+      const naiveVals = lpost.map(v => Math.exp(v));
+      const naiveSum = naiveVals[0] + naiveVals[1] + naiveVals[2];
+      const naiveUnderflow = (naiveSum === 0 || Number.isNaN(naiveSum));
+
+      let bestIdx = 0;
+      if (post[1] > post[bestIdx]) bestIdx = 1;
+      if (post[2] > post[bestIdx]) bestIdx = 2;
+      const gts = ['0/0', '0/1', '1/1'];
+
+      // Exact log-space QUAL and GQ so they don't saturate at float precision
+      // log P(0/0 | D) = (lpost[0] - m) - log(Z)
+      const logP00 = (lpost[0] - m) - Math.log(Z);
+      const qual = Number.isNaN(logP00) ? NaN : Math.max(0, -10 * logP00 / Math.LN10);
+
+      // 1 - P(best | D) = sum_{g != best} exp(lpost[g] - m) / Z
+      const otherSum = unnorm.reduce((acc, v, i) => i === bestIdx ? acc : acc + v, 0);
+      let gq;
+      if (Number.isNaN(Z)) gq = NaN;
+      else if (otherSum > 0) gq = Math.max(0, -10 * Math.log10(otherSum / Z));
+      else {
+        // Compute from second-best log-posterior directly when exp underflows
+        const others = lpost.filter((_, i) => i !== bestIdx);
+        const second = Math.max(...others);
+        gq = Math.max(0, -10 * (second - m) / Math.LN10);
+      }
+
+      return { lls, priors, lp, lpost, m, post, gl, gt: gts[bestIdx], bestIdx, qual, gq, naiveUnderflow };
+    }
+
+    const PRESETS = {
+      rs3092994: { ro: 21, ao: 19, qr: 33, qa: 33, f: 0.01, flat: false, clip: true, model: 'biallelic' },
+      flip:      { ro: 0,  ao: 2,  qr: 30, qa: 30, f: 0.01, flat: false, clip: true, model: 'biallelic' },
+      paradox:   { ro: 0,  ao: 5,  qr: 30, qa: 30, f: 0.01, flat: false, clip: true, model: 'biallelic' },
+      q6noise:   { ro: 15, ao: 4,  qr: 33, qa: 6,  f: 0.01, flat: false, clip: true, model: 'biallelic' },
+      q0crash:   { ro: 10, ao: 2,  qr: 0,  qa: 30, f: 0.01, flat: false, clip: false, model: 'biallelic' },
+      pcrdup:    { ro: 10, ao: 10, qr: 30, qa: 30, f: 0.01, flat: false, clip: true, model: 'biallelic' },
+      underflow: { ro: 550,ao: 550,qr: 33, qa: 33, f: 0.01, flat: false, clip: true, model: 'biallelic' }
+    };
+
+    function fmtNum(v, dec = 2) {
+      if (Number.isNaN(v)) return 'NaN';
+      if (!Number.isFinite(v)) return v > 0 ? '+∞' : '−∞';
+      return v.toFixed(dec);
+    }
+
+    function fmtProb(p) {
+      if (Number.isNaN(p)) return 'NaN';
+      if (p >= 0.001) return (p * 100).toFixed(2) + '%';
+      if (p === 0) return '0%';
+      return p.toExponential(1);
+    }
+
+    function render() {
+      const ro = parseInt($('rng-ro').value, 10);
+      const ao = parseInt($('rng-ao').value, 10);
+      const qr = parseInt($('rng-qr').value, 10);
+      const qa = parseInt($('rng-qa').value, 10);
+      const f = Math.pow(10, parseFloat($('rng-logf').value));
+      const flat = $('chk-flat').checked;
+      const clip = $('chk-clip').checked;
+      const model = $('model-sel').value;
+
+      $('lbl-ro').textContent = String(ro);
+      $('lbl-ao').textContent = String(ao);
+      $('lbl-qr').textContent = `Q${qr} (ε = ${(Math.pow(10, -qr / 10) * 100).toFixed(qr >= 30 ? 3 : 1)}%)`;
+      $('lbl-qa').textContent = `Q${qa} (ε = ${(Math.pow(10, -qa / 10) * 100).toFixed(qa >= 30 ? 3 : 1)}%)`;
+      $('lbl-f').textContent = flat ? 'Flat (1/3 each)' : f.toFixed(4);
+
+      const res = runBayes(ro, ao, qr, qa, f, flat, model, clip);
+      const gts = ['0/0', '0/1', '1/1'];
+
+      $('kpi-gt').textContent = Number.isNaN(res.post[0]) ? 'NaN!' : res.gt;
+      $('kpi-qual').textContent = fmtNum(res.qual, 1);
+      $('kpi-gq').textContent = fmtNum(res.gq, 1);
+      $('kpi-naive').textContent = res.naiveUnderflow ? 'UNDERFLOW!' : 'OK';
+      $('kpi-naive').style.color = res.naiveUnderflow ? 'var(--bad)' : 'var(--good)';
+
+      [0, 1, 2].forEach(i => {
+        const id = ['00', '01', '11'][i];
+        const p = res.post[i];
+        $(`bar-${id}`).style.width = Number.isNaN(p) ? '0%' : `${Math.max(0, Math.min(100, p * 100)).toFixed(1)}%`;
+        $(`txt-${id}`).textContent = fmtProb(p);
+      });
+
+      let html = '<thead><tr><th>G</th><th>ln P(D|G)</th><th>ln P(G)</th><th>ℓ_g (unnorm)</th><th>ℓ_g − max</th><th>GL (log₁₀)</th><th>P(G|D)</th></tr></thead><tbody>';
+      for (let i = 0; i < 3; i++) {
+        const winCls = (!Number.isNaN(res.post[0]) && i === res.bestIdx) ? 'win-row' : '';
+        html += `<tr class="${winCls}"><th>${gts[i]}</th><td>${fmtNum(res.lls[i], 2)}</td><td>${fmtNum(res.lp[i], 2)}</td><td>${fmtNum(res.lpost[i], 2)}</td><td>${fmtNum(res.lpost[i] - res.m, 2)}</td><td>${fmtNum(res.gl[i], 2)}</td><td>${fmtProb(res.post[i])}</td></tr>`;
+      }
+      html += '</tbody>';
+      $('calc-table').innerHTML = html;
+
+      // Contextual insight banner
+      const note = $('status-note');
+      if (Number.isNaN(res.post[0])) {
+        note.className = 'alert-box alert-bad';
+        note.textContent = '⚠ Crash! Q = 0 gives ε = 1 → ln(1 − ε) = −∞ (NaN). Enable "Clip ε ∈ (0,1)" to fix!';
+      } else if (res.naiveUnderflow) {
+        note.className = 'alert-box alert-warn';
+        note.textContent = `⚠ At DP = ${ro + ao}, raw exp(ℓ_g) underflows to 0.0 in IEEE-754 float64! Log-sum-exp keeps the exact posterior stable.`;
+      } else if (res.qual >= 20 && res.gq < 15) {
+        note.className = 'alert-box alert-warn';
+        note.textContent = `QUAL = ${res.qual.toFixed(1)} (sure it's variant), yet GQ = ${res.gq.toFixed(1)} (uncertain between 0/1 and 1/1)!`;
+      } else {
+        const nStar = Math.log(2 * (1 - f) / f) / Math.log(2 * Math.max(0.51, 1 - Math.pow(10, -qa / 10)));
+        note.className = 'alert-box';
+        note.textContent = flat
+          ? 'Flat prior active: MAP equals Maximum Likelihood (pure read evidence).'
+          : `HWE prior odds P(0/1)/P(1/1) = ${(2 * (1 - f) / f).toFixed(1)}× → pure-ALT crossover depth n* ≈ ${nStar.toFixed(1)} reads.`;
+      }
+
+      drawPhaseDiagram(ro, ao, qa, f, flat);
+    }
+
+    function drawPhaseDiagram(ro, ao, qa, f, flat) {
+      const canvas = $('phase-canvas');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+
+      const st = getComputedStyle(document.documentElement);
+      const textCol = st.getPropertyValue('--text').trim() || '#e8ecf2';
+      const mutedCol = st.getPropertyValue('--muted').trim() || '#9aa3b2';
+      const borderCol = st.getPropertyValue('--border').trim() || '#3d4350';
+
+      ctx.clearRect(0, 0, W, H);
+      const padL = 48, padR = 14, padT = 12, padB = 28;
+      const pw = W - padL - padR, ph = H - padT - padB;
+      const maxN = 16;
+      const xOf = (n) => padL + (Math.min(maxN, n) / maxN) * pw;
+      const yOf = (lf) => padT + ((Math.log10(0.5) - lf) / (Math.log10(0.5) - (-4))) * ph;
+
+      const eps = Math.min(0.49, Math.pow(10, -qa / 10));
+      // Shade regions
+      ctx.fillStyle = 'rgba(100, 181, 246, 0.16)';
+      ctx.fillRect(padL, padT, pw, ph);
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= 100; i++) {
+        const lf = -4 + (i / 100) * (Math.log10(0.5) + 4);
+        const fv = Math.pow(10, lf);
+        const ns = Math.log(2 * (1 - fv) / fv) / Math.log(2 * (1 - eps));
+        const x = xOf(Math.max(0, ns)), y = yOf(lf);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.lineTo(padL + pw, padT);
+      ctx.lineTo(padL + pw, padT + ph);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 183, 77, 0.22)';
+      ctx.fill();
+
+      // Boundary curve
+      ctx.strokeStyle = textCol;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i <= 100; i++) {
+        const lf = -4 + (i / 100) * (Math.log10(0.5) + 4);
+        const fv = Math.pow(10, lf);
+        const ns = Math.log(2 * (1 - fv) / fv) / Math.log(2 * (1 - eps));
+        const x = xOf(Math.max(0, ns)), y = yOf(lf);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Axes ticks
+      ctx.fillStyle = mutedCol;
+      ctx.font = '10.5px ui-monospace, monospace';
+      ctx.textAlign = 'right';
+      [[-4, '10⁻⁴'], [-3, '10⁻³'], [-2, '10⁻²'], [-1, '10⁻¹'], [Math.log10(0.5), '0.5']].forEach(([lf, lbl]) => {
+        const y = yOf(lf);
+        ctx.fillText(lbl, padL - 5, y + 3);
+      });
+      ctx.textAlign = 'center';
+      [0, 4, 8, 12, 16].forEach(n => ctx.fillText(String(n), xOf(n), H - 10));
+      ctx.fillStyle = textCol;
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Pure ALT depth n (0 REF)', padL + pw / 2, H - 1);
+
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillStyle = st.getPropertyValue('--accent').trim() || '#64b5f6';
+      ctx.fillText('0/1 (Prior wins)', padL + pw * 0.22, padT + ph * 0.72);
+      ctx.fillStyle = st.getPropertyValue('--warn').trim() || '#ffb74d';
+      ctx.fillText('1/1 (Data win)', padL + pw * 0.78, padT + ph * 0.30);
+
+      // Current point crosshair if ro == 0 and !flat
+      if (!flat) {
+        const cx = xOf(ao), cy = yOf(Math.log10(f));
+        ctx.strokeStyle = '#ef5350'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(cx, padT); ctx.lineTo(cx, padT + ph); ctx.moveTo(padL, cy); ctx.lineTo(padL + pw, cy); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    }
+
+    $('preset-sel').addEventListener('change', (e) => {
+      const p = PRESETS[e.target.value];
+      $('rng-ro').value = p.ro; $('rng-ao').value = p.ao;
+      $('rng-qr').value = p.qr; $('rng-qa').value = p.qa;
+      $('rng-logf').value = Math.log10(p.f).toFixed(3);
+      $('chk-flat').checked = p.flat;
+      $('chk-clip').checked = p.clip;
+      $('model-sel').value = p.model;
+      render();
+    });
+    ['rng-ro', 'rng-ao', 'rng-qr', 'rng-qa', 'rng-logf', 'chk-flat', 'chk-clip', 'model-sel'].forEach(id => {
+      $(id).addEventListener('input', render);
+    });
+    new ResizeObserver(() => render()).observe($('phase-canvas'));
+
+    window.__bayesLab = { runBayes };
+    render();
+  </script>
+</body>
+</html>
+
