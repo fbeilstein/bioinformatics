@@ -64,15 +64,15 @@ $$Q = \operatorname{ord}(c) - 33 = -10\log_{10} P_{\text{error}}$$
 
 $$P_{\text{error}} = 10^{-Q / 10}$$
 
-- `Q10` (`+`, ASCII 43): $P_{\text{error}} = 10\%$ (1 in 10 wrong)
-- `Q20` (`5`, ASCII 53): $P_{\text{error}} = 1\%$ (99% accurate)
-- `Q30` (`?`, ASCII 63): $P_{\text{error}} = 0.1\%$ (99.9% accurate)
-- `Q40` (`I`, ASCII 73): $P_{\text{error}} = 0.01\%$ (99.99% accurate)
+- `Q10` (`+`, ASCII 43): $P_{\text{error}} = 10\\%$ (1 in 10 wrong)
+- `Q20` (`5`, ASCII 53): $P_{\text{error}} = 1\\%$ (99% accurate)
+- `Q30` (`?`, ASCII 63): $P_{\text{error}} = 0.1\\%$ (99.9% accurate)
+- `Q40` (`I`, ASCII 73): $P_{\text{error}} = 0.01\\%$ (99.99% accurate)
 
 [[0,1]]
 ### Two Complementary `fastp` Filters
 1. **Whole-read unqualified filter (default `-q 15 -u 40`)**:
-   - Count bases with $Q_j < 15$; discard the entire read if that fraction exceeds $40\%$ (or if `N` count $> 5$).
+   - Count bases with $Q_j < 15$; discard the entire read if that fraction exceeds $40\\%$ (or if `N` count $> 5$).
 2. **$O(L)$ Sliding-Window Tail Trim (`--cut_right`)**:
    - Maintain a rolling sum $S_i = \sum_{j=i}^{i+w-1} Q_j$ over width $w$ (default $w = 4$).
    - Update in $O(1)$ per base: $S_{i+1} = S_i - Q_i + Q_{i+w}$.
@@ -99,7 +99,7 @@ revcomp(R2):   [..Adapter A]═════════════════�
                           ◄──── Shared Overlap ────►
 ```
 
-- `fastp` reverse-complements $R_2$ and performs an **ungapped shift scan** against $R_1$ (requiring overlap $\ge 30\text{ bp}$ and mismatch rate $\le 10\%$).
+- `fastp` reverse-complements $R_2$ and performs an **ungapped shift scan** against $R_1$ (requiring overlap $\ge 30\text{ bp}$ and mismatch rate $\le 10\\%$).
 - A sharp identity peak at negative shift $I - L < 0$ reveals the exact insert boundary $I$ **de novo** — bases protruding past the shared overlap are clipped from both reads!
 - **Bonus**: inside the shared overlap, mismatched bases are error-corrected toward the mate with the higher Phred score.
 
@@ -176,7 +176,7 @@ Every $k$-mer algorithm faces a fundamental **Goldilocks trade-off** between alp
 
 :::matrix { cols="1.25fr 1fr" gap="25px" }
 [[0,0]]
-![Goldilocks k-mer Tradeoff](lecture_01_the_molecular_blueprint/images/kmer_tradeoff.png){width=98% center}
+![Goldilocks k-mer Tradeoff](lecture_01_the_molecular_blueprint/images/kmer_tradeoff.png){width=98 center}
 
 [[0,1]]
 ### 1. Lower Bound — Avoid Random Collisions
@@ -197,7 +197,7 @@ $$p = (1 - d)^k \approx e^{-kd}$$
 ---
 # Suppressing Error $k$-mers: Bloom Filters & `-m 2`
 
-Raw FASTQ reads contain base-calling errors — even a modest **$0.5\%$** error rate at $k = 21$ corrupts $1 - 0.995^{21} \approx 10\%$ of **every** extracted $k$-mer!
+Raw FASTQ reads contain base-calling errors — even a modest **$0.5\\%$** error rate at $k = 21$ corrupts $1 - 0.995^{21} \approx 10\\%$ of **every** extracted $k$-mer!
 
 ![Read k-mer Spectrum and Bloom Filter Gate](lecture_01_the_molecular_blueprint/images/kmer_spectrum_bloom.png){width=94% center}
 
@@ -249,7 +249,7 @@ Suppose a genome contains $G$ distinct valid $k$-mers, and a uniform hash maps e
 ### Sequencing Coverage Estimate
 Once $\hat{G}$ is estimated from the $s$-th smallest hash, mean depth follows immediately from total bases streamed:
 $$\widehat{\text{Coverage}} = \frac{\text{Total bases streamed}}{\hat{G}}$$
-*(Relative standard error of $\hat{G}$ is $\approx 1/\sqrt{s} \approx 3\%$ at $s = 1000$!)*
+*(Relative standard error of $\hat{G}$ is $\approx 1/\sqrt{s} \approx 3\\%$ at $s = 1000$!)*
 :::
 
 ---
@@ -262,7 +262,7 @@ How do we compare two sets of $5\times 10^6$ $k$-mers using only **1,000 integer
 [[0,0]]
 ### Why MurmurHash3 (64-bit)?
 - Maps arbitrary canonical $k$-mers uniformly across $[0, 2^{64}-1]$ (~$1.8 \times 10^{19}$ slots $\implies$ near-zero hash collisions).
-- **Strong avalanche effect**: flipping a single DNA base flips $\approx 50\%$ of the output bits, destroying sequence correlations.
+- **Strong avalanche effect**: flipping a single DNA base flips $\approx 50\\%$ of the output bits, destroying sequence correlations.
 - **Non-cryptographic**: $10\times$ faster than SHA-256 (we need statistical uniformity, not cryptographic pre-image resistance).
 
 [[0,1]]
@@ -368,9 +368,9 @@ $$\operatorname{SE}(\hat{J}) = \sqrt{\frac{J(1 - J)}{s}} \le \frac{1}{2\sqrt{s}}
 
 | Sketch Size $s$ | Max SE ($\hat{J}$) | `.msh` Size | Typical Use |
 | :---: | :---: | :---: | :--- |
-| $100$ | $\pm 5.0\%$ | ~0.8 KB | Ultra-coarse screening |
-| **$1{,}000$** | **$\pm 1.6\%$** | **~8 KB** | **Mash default (bacteria)** |
-| $10{,}000$ | $\pm 0.5\%$ | ~80 KB | Fine strain / outbreak resolution |
+| $100$ | $\pm 5.0\\%$ | ~0.8 KB | Ultra-coarse screening |
+| **$1{,}000$** | **$\pm 1.6\\%$** | **~8 KB** | **Mash default (bacteria)** |
+| $10{,}000$ | $\pm 0.5\\%$ | ~80 KB | Fine strain / outbreak resolution |
 
 **Key miracle**: accuracy depends **only on $s$**, completely **independent of genome size $G$**!
 :::
@@ -379,7 +379,7 @@ $$\operatorname{SE}(\hat{J}) = \sqrt{\frac{J(1 - J)}{s}} \le \frac{1}{2\sqrt{s}}
 
 # From Jaccard to ANI: Deriving the Mash Distance
 
-Biologists think in **Average Nucleotide Identity (ANI)** — the mean base identity across aligned homologous blocks (where $\text{ANI} \ge 95\%$ defines the microbial species boundary). How do we convert $k$-mer Jaccard $J$ into base-level mutation rate $d \approx 1 - \text{ANI}$?
+Biologists think in **Average Nucleotide Identity (ANI)** — the mean base identity across aligned homologous blocks (where $\text{ANI} \ge 95\\%$ defines the microbial species boundary). How do we convert $k$-mer Jaccard $J$ into base-level mutation rate $d \approx 1 - \text{ANI}$?
 
 :::matrix { cols="1.15fr 1fr" gap="30px" }
 [[0,0]]
@@ -402,10 +402,10 @@ Suppose `mash dist` reports **`91/1000`** shared hashes at $k = 21$ (*E. coli* v
 1. $\hat{J} = \frac{91}{1000} = 0.091$
 2. $\hat{p} = \frac{2 \times 0.091}{1 + 0.091} = 0.1668$
 3. $D = -\frac{1}{21}\ln(0.1668) = \mathbf{0.0853}$
-4. Estimated $\text{ANI} \approx 1 - 0.0853 = \mathbf{91.5\%}$ (same genus, different species!).
+4. Estimated $\text{ANI} \approx 1 - 0.0853 = \mathbf{91.5\\%}$ (same genus, different species!).
 
 ### Species Boundary Mapping
-- **Same species**: $\text{ANI} \ge 95\% \iff D \lesssim \mathbf{0.05}$
+- **Same species**: $\text{ANI} \ge 95\\% \iff D \lesssim \mathbf{0.05}$
   - At $k = 21$, $D = 0.05 \iff p = e^{-1.05} \approx 0.35 \implies J \approx \mathbf{0.21}$ (~212/1000 shared hashes!).
 :::
 
@@ -418,14 +418,14 @@ The clean identity $D \approx 1 - \text{ANI}$ relies on two hidden assumptions: 
 
 :::matrix { cols="1fr 1fr" gap="30px" }
 [[0,0]]
-### Regime 1: High Divergence ($D > 0.20$, $\text{ANI} < 80\%$)
+### Regime 1: High Divergence ($D > 0.20$, $\text{ANI} < 80\\%$)
 - At $k = 21$ and $d = 0.25$, survival collapses to $p = e^{-5.25} \approx 0.005$ ($J \approx 0.0026 \implies \sim 2.6/1000$ hashes!).
 - Relative sampling noise explodes; if $x = 0$, $D$ saturates at $1.0$ (or $\infty$).
 - **Fix**: lower $k$ (e.g. $k = 13\text{–}15$) or increase $s$ (trading off random collisions).
 
 [[0,1]]
 ### Regime 2: Unequal Genome Sizes ($|A| \ne |B|$)
-- Suppose a small phage/plasmid $A$ is **100% identical** ($\text{ANI} = 100\%$) to an integrated region of a large genome $B$.
+- Suppose a small phage/plasmid $A$ is **100% identical** ($\text{ANI} = 100\\%$) to an integrated region of a large genome $B$.
 - Exact Jaccard is only $J = |A| / |B| = \rho \ll 1$, so Mash reports $D = -\frac{1}{k}\ln\frac{2\rho}{1+\rho} > 0$ — falsely exceeding $0.05$ whenever $|A|/|B| < 0.21$ (at $k=21$)!
 - **Fix**: asymmetric **containment** $|A \cap B| / |A|$ (`mash screen`) instead of symmetric Jaccard.
 :::
