@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robust MAD Breakdown &amp; Microfluidic Doublets Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; align-items: center; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    input[type="range"] { width: 100%; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 7px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .chk-box {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+      padding: 5px 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="MAD breakdown and microfluidic doublets">
+    <button type="button" role="tab" id="tab-mad" aria-selected="true">1. Robust MAD Breakdown &amp; Outlier Masking</button>
+    <button type="button" role="tab" id="tab-dbl" aria-selected="false">2. Poisson Encapsulation &amp; Scrublet Doublets</button>
+  </div>
+
+  <!-- TAB 1: Robust MAD -->
+  <div role="tabpanel" id="panel-mad" aria-labelledby="tab-mad">
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Apoptotic Contamination (%)</span><span class="ctrl-val" id="v-cont">5%</span></span>
+        <input type="range" id="s-cont" min="0" max="55" step="1" value="5"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Outlier Mean MT%</span><span class="ctrl-val" id="v-osev">24%</span></span>
+        <input type="range" id="s-osev" min="10" max="75" step="1" value="24"></label>
+      <div style="display:flex; flex-direction:column; gap:5px;">
+        <label class="ctrl"><span class="ctrl-top"><span>Multiplier n_MAD</span><span class="ctrl-val" id="v-nmad">3.0</span></span>
+          <input type="range" id="s-nmad" min="2" max="5" step="0.5" value="3"></label>
+        <label class="chk-box"><input type="checkbox" id="chk-log"> <span>Log-Scale Two-Sided y = ln(1+x)</span></label>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Mitochondrial % Distribution &amp; Cutoffs</span>
+          <span class="badge bad" id="mask-badge">Mean+3SD masking!</span>
+        </div>
+        <canvas id="mad-hist"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Breakdown Curve (0% SD vs. 50% MAD)</span>
+          <span class="badge ok">k = 1.4826022</span>
+        </div>
+        <canvas id="mad-brk"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Mean + n·SD Cutoff</div><div class="kpi-val" id="k-sd-cut" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Median + n·MAD_scaled</div><div class="kpi-val" id="k-mad-cut" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Dying Cells Caught (SD)</div><div class="kpi-val" id="k-sd-rec" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Dying Cells Caught (MAD)</div><div class="kpi-val" id="k-mad-rec" style="color:var(--ok);">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Poisson Loading & Scrublet -->
+  <div role="tabpanel" id="panel-dbl" aria-labelledby="tab-dbl" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Poisson Loading Rate λ</span><span class="ctrl-val" id="v-lam">0.05</span></span>
+        <input type="range" id="s-lam" min="0.01" max="0.35" step="0.01" value="0.05"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Equal Cell Types C (Heterotypic)</span><span class="ctrl-val" id="v-ctypes">3 types</span></span>
+        <input type="range" id="s-ctypes" min="1" max="8" step="1" value="3"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Scrublet k-NN Neighbors</span><span class="ctrl-val" id="v-knn">15</span></span>
+        <input type="range" id="s-knn" min="5" max="35" step="2" value="15"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Droplet Occupancy P(X = k) = λ^k e^(-λ) / k!</span>
+          <span class="badge" id="dbl-rate-badge">Cond. Doublets: 2.5%</span>
+        </div>
+        <canvas id="pois-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Scrublet PCA + k-NN Doublet Score Map</span>
+          <span class="badge ok" id="het-badge">Heterotypic: 67%</span>
+        </div>
+        <canvas id="scrub-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Empty Droplets P(X = 0)</div><div class="kpi-val" id="k-p0">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Singlets P(X = 1)</div><div class="kpi-val" id="k-p1" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Cond. Multiplet P(≥2 | ≥1)</div><div class="kpi-val" id="k-cond" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Detectable Heterotypic Share</div><div class="kpi-val" id="k-het">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderMAD();
+      renderDoublets();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderMAD(); else renderDoublets(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Pure Statistical Functions ----
+    const MAD_NORM_SCALE = 1.482602218505602;
+
+    function median(arr) {
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : 0.5 * (s[m - 1] + s[m]);
+    }
+
+    function computeScaledMAD(arr) {
+      const med = median(arr);
+      const dev = arr.map(x => Math.abs(x - med));
+      const rawMad = median(dev);
+      return { median: med, rawMad, scaledMad: rawMad * MAD_NORM_SCALE };
+    }
+
+    function meanAndSD(arr) {
+      const n = arr.length;
+      const mu = arr.reduce((a, b) => a + b, 0) / n;
+      const v = arr.reduce((a, x) => a + (x - mu) * (x - mu), 0) / Math.max(1, n - 1);
+      return { mean: mu, sd: Math.sqrt(v) };
+    }
+
+    function poissonLoadingStats(lam, nTypes) {
+      const p0 = Math.exp(-lam);
+      const p1 = lam * p0;
+      const p2 = 0.5 * lam * lam * p0;
+      const pGe2 = Math.max(0, 1 - p0 - p1);
+      const condMultiplet = pGe2 / Math.max(1e-12, 1 - p0);
+      const hetFrac = nTypes > 1 ? 1 - 1 / nTypes : 0;
+      return { p0, p1, p2, pGe2, condMultiplet, hetFrac };
+    }
+
+    // Deterministic seeded PRNG
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const N_CELLS = 300;
+    const BASE_CLEAN = (() => {
+      const r = mulberry32(55501);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      return Array.from({ length: N_CELLS }, () => Math.max(0.2, Math.min(4.4, 2.03 + 0.78 * rn())));
+    })();
+    const BASE_NOISE = (() => {
+      const r = mulberry32(55502);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      return Array.from({ length: N_CELLS }, () => rn());
+    })();
+
+    // Fixed Scrublet 2D PCA simulation pool (3 clusters + real heterotypic doublets + simulated doublets)
+    const SCRUB_DATA = (() => {
+      const r = mulberry32(9905);
+      const rn = () => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r());
+      const centers = [[-2.8, -1.6], [2.8, -1.6], [0.0, 2.8]];
+      const singlets = [];
+      for (let c = 0; c < 3; c++) {
+        for (let i = 0; i < 45; i++) {
+          singlets.push({ x: centers[c][0] + 0.55 * rn(), y: centers[c][1] + 0.55 * rn(), c, isTrueDbl: false });
+        }
+      }
+      // 18 true observed heterotypic doublets sitting on bridges
+      for (let i = 0; i < 18; i++) {
+        const a = i % 3, b = (i + 1) % 3;
+        singlets.push({
+          x: 0.5 * (centers[a][0] + centers[b][0]) + 0.35 * rn(),
+          y: 0.5 * (centers[a][1] + centers[b][1]) + 0.35 * rn(),
+          c: -1, isTrueDbl: true
+        });
+      }
+      // 160 artificial Scrublet simulated doublets (pairwise sum midpoints)
+      const simDbl = [];
+      for (let i = 0; i < 160; i++) {
+        const p1 = singlets[Math.floor(r() * 135)];
+        const p2 = singlets[Math.floor(r() * 135)];
+        simDbl.push({ x: 0.5 * (p1.x + p2.x) + 0.22 * rn(), y: 0.5 * (p1.y + p2.y) + 0.22 * rn(), het: p1.c !== p2.c });
+      }
+      return { obs: singlets, sim: simDbl };
+    })();
+
+    function scoreScrublet(k) {
+      const all = [
+        ...SCRUB_DATA.obs.map(p => ({ x: p.x, y: p.y, isSim: false })),
+        ...SCRUB_DATA.sim.map(p => ({ x: p.x, y: p.y, isSim: true })),
+      ];
+      return SCRUB_DATA.obs.map(p => {
+        const dists = all.map(q => ({ d: (p.x - q.x) ** 2 + (p.y - q.y) ** 2, isSim: q.isSim }));
+        dists.sort((a, b) => a.d - b.d);
+        let nSim = 0;
+        for (let i = 1; i <= k; i++) if (dists[i].isSim) nSim++;
+        return nSim / k;
+      });
+    }
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function buildSample(contPct, osev) {
+      const nBad = Math.round((contPct / 100) * N_CELLS);
+      const vals = [];
+      const isBad = [];
+      for (let i = 0; i < N_CELLS - nBad; i++) { vals.push(BASE_CLEAN[i]); isBad.push(false); }
+      for (let i = 0; i < nBad; i++) {
+        vals.push(Math.max(7.0, Math.min(90, osev + 3.8 * BASE_NOISE[i])));
+        isBad.push(true);
+      }
+      return { vals, isBad, nBad };
+    }
+
+    function renderMAD() {
+      const cont = +$('s-cont').value;
+      const osev = +$('s-osev').value;
+      const nMad = +$('s-nmad').value;
+      const useLog = $('chk-log').checked;
+
+      $('v-cont').textContent = `${cont}%`;
+      $('v-osev').textContent = `${osev}%`;
+      $('v-nmad').textContent = nMad.toFixed(1);
+
+      const { vals, isBad, nBad } = buildSample(cont, osev);
+      const work = useLog ? vals.map(v => Math.log1p(v)) : vals;
+      const ms = meanAndSD(work);
+      const md = computeScaledMAD(work);
+      const cutSD = useLog ? Math.expm1(ms.mean + nMad * ms.sd) : ms.mean + nMad * ms.sd;
+      const cutMAD = useLog ? Math.expm1(md.median + nMad * md.scaledMad) : md.median + nMad * md.scaledMad;
+
+      let hitSD = 0, hitMAD = 0;
+      vals.forEach((v, i) => {
+        if (isBad[i]) {
+          if (v > cutSD) hitSD++;
+          if (v > cutMAD) hitMAD++;
+        }
+      });
+
+      $('k-sd-cut').textContent = `${cutSD.toFixed(2)}%`;
+      $('k-mad-cut').textContent = `${cutMAD.toFixed(2)}%`;
+      $('k-sd-rec').textContent = nBad > 0 ? `${hitSD}/${nBad} (${Math.round(100 * hitSD / nBad)}%)` : 'No outliers';
+      $('k-mad-rec').textContent = nBad > 0 ? `${hitMAD}/${nBad} (${Math.round(100 * hitMAD / nBad)}%)` : 'No outliers';
+
+      const mb = $('mask-badge');
+      if (cont >= 50) { mb.textContent = '≥50%: MAD Breakdown Reached!'; mb.className = 'badge bad'; }
+      else if (nBad > 0 && hitSD < hitMAD) { mb.textContent = `SD masks ${hitMAD - hitSD} dying cells!`; mb.className = 'badge bad'; }
+      else { mb.textContent = 'MAD tracks healthy bulk'; mb.className = 'badge ok'; }
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      // 1. Histogram canvas
+      const c1 = prepCanvas($('mad-hist'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const pL = 36, pR = 12, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xMax = Math.max(30, osev + 14);
+        const nBins = 36;
+        const bw = xMax / nBins;
+        const hClean = new Array(nBins).fill(0), hBad = new Array(nBins).fill(0);
+        vals.forEach((v, i) => {
+          const b = Math.min(nBins - 1, Math.floor(v / bw));
+          if (isBad[i]) hBad[b]++; else hClean[b]++;
+        });
+        const maxH = Math.max(10, ...hClean.map((v, i) => v + hBad[i]));
+        const xOf = (v) => pL + (Math.min(xMax, Math.max(0, v)) / xMax) * pw;
+
+        for (let b = 0; b < nBins; b++) {
+          const x = pL + (b / nBins) * pw, w = Math.max(2, pw / nBins - 1);
+          const hc = (hClean[b] / maxH) * (ph * 0.92);
+          const hb = (hBad[b] / maxH) * (ph * 0.92);
+          ctx.fillStyle = cAcc + '88'; ctx.fillRect(x, pT + ph - hc, w, hc);
+          ctx.fillStyle = cWarn + 'cc'; ctx.fillRect(x, pT + ph - hc - hb, w, hb);
+        }
+
+        // Threshold lines
+        const drawV = (val, col, lbl, yOff) => {
+          if (val > xMax) return;
+          const x = xOf(val);
+          ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2.1; ctx.setLineDash([4, 3]);
+          ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT + ph); ctx.stroke(); ctx.restore();
+          ctx.fillStyle = col; ctx.font = 'bold 10px ui-monospace, monospace';
+          ctx.fillText(lbl, Math.min(x + 4, pL + pw - 86), pT + yOff);
+        };
+        drawV(cutMAD, cOk, `MAD=${cutMAD.toFixed(1)}%`, 12);
+        drawV(cutSD, cBad, `SD=${cutSD.toFixed(1)}%`, 26);
+
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('0%', pL, H - 7);
+        ctx.fillText(`${Math.round(xMax / 2)}%`, pL + pw / 2 - 10, H - 7);
+        ctx.fillText(`${Math.round(xMax)}% MT`, pL + pw - 36, H - 7);
+      }
+
+      // 2. Breakdown curve canvas (0..55%)
+      const c2 = prepCanvas($('mad-brk'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 38, pR = 14, pT = 18, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const ptsSD = [], ptsMAD = [];
+        for (let f = 0; f <= 55; f += 2) {
+          const s = buildSample(f, osev);
+          const wk = useLog ? s.vals.map(v => Math.log1p(v)) : s.vals;
+          const m1 = meanAndSD(wk), m2 = computeScaledMAD(wk);
+          ptsSD.push([f, useLog ? Math.expm1(m1.mean + nMad * m1.sd) : m1.mean + nMad * m1.sd]);
+          ptsMAD.push([f, useLog ? Math.expm1(m2.median + nMad * m2.scaledMad) : m2.median + nMad * m2.scaledMad]);
+        }
+        const yMax = Math.min(120, Math.max(25, ...ptsSD.map(p => p[1])) * 1.08);
+        const xOf = (f) => pL + (f / 55) * pw;
+        const yOf = (y) => pT + ph - (Math.min(yMax, y) / yMax) * ph;
+
+        // 50% breakdown line
+        ctx.save(); ctx.strokeStyle = cMuted; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(xOf(50), pT); ctx.lineTo(xOf(50), pT + ph); ctx.stroke(); ctx.restore();
+
+        const drawLine = (pts, col) => {
+          ctx.strokeStyle = col; ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          pts.forEach(([x, y], i) => { const px = xOf(x), py = yOf(y); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+          ctx.stroke();
+        };
+        drawLine(ptsSD, cBad);
+        drawLine(ptsMAD, cOk);
+
+        // Current slider marker
+        ctx.fillStyle = cBad; ctx.beginPath(); ctx.arc(xOf(cont), yOf(cutSD), 4.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = cOk;  ctx.beginPath(); ctx.arc(xOf(cont), yOf(cutMAD), 4.2, 0, Math.PI * 2); ctx.fill();
+
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = cBad; ctx.fillText('— Mean + n·SD', pL + 6, pT + 11);
+        ctx.fillStyle = cOk;  ctx.fillText('— Median + n·MAD', pL + 6, pT + 24);
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('Contamination (%)', pL + pw / 2 - 42, H - 7);
+        ctx.fillText('50%', xOf(50) - 10, pT + 11);
+      }
+    }
+
+    function renderDoublets() {
+      const lam = +$('s-lam').value;
+      const cTypes = +$('s-ctypes').value;
+      const kNN = +$('s-knn').value;
+      $('v-lam').textContent = lam.toFixed(2);
+      $('v-ctypes').textContent = `${cTypes} ${cTypes === 1 ? 'type' : 'types'}`;
+      $('v-knn').textContent = kNN;
+
+      const st = poissonLoadingStats(lam, cTypes);
+      $('k-p0').textContent = `${(st.p0 * 100).toFixed(1)}%`;
+      $('k-p1').textContent = `${(st.p1 * 100).toFixed(2)}%`;
+      $('k-cond').textContent = `${(st.condMultiplet * 100).toFixed(2)}%`;
+      $('k-het').textContent = `${(st.hetFrac * 100).toFixed(1)}%`;
+      $('dbl-rate-badge').textContent = `Cond. Doublets: ${(st.condMultiplet * 100).toFixed(1)}%`;
+      $('het-badge').textContent = `Heterotypic: ${(st.hetFrac * 100).toFixed(0)}%`;
+
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      // 1. Poisson bar chart (k = 0, 1, 2, >=3)
+      const c1 = prepCanvas($('pois-canvas'));
+      if (c1) {
+        const { ctx, W, H } = c1;
+        const pL = 42, pR = 14, pT = 18, pB = 28, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const pGe3 = Math.max(0, 1 - st.p0 - st.p1 - st.p2);
+        const bars = [
+          { lbl: 'k = 0\n(Empty)', v: st.p0, col: cMuted },
+          { lbl: 'k = 1\n(Singlet)', v: st.p1, col: cOk },
+          { lbl: 'k = 2\n(Doublet)', v: st.p2, col: cWarn },
+          { lbl: 'k ≥ 3\n(Multiplet)', v: pGe3, col: cBad },
+        ];
+        const step = pw / bars.length;
+        bars.forEach((b, i) => {
+          const bw = step * 0.56;
+          const x = pL + i * step + (step - bw) / 2;
+          const bh = Math.max(2, b.v * ph * 0.90);
+          ctx.fillStyle = b.col;
+          ctx.fillRect(x, pT + ph - bh, bw, bh);
+          ctx.fillStyle = b.col; ctx.font = 'bold 10.5px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${(b.v * 100).toFixed(2)}%`, x + bw / 2, pT + ph - bh - 5);
+          ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+          ctx.fillText(b.lbl.split('\n')[0], x + bw / 2, H - 14);
+          ctx.fillText(b.lbl.split('\n')[1], x + bw / 2, H - 3);
+        });
+        ctx.textAlign = 'left';
+      }
+
+      // 2. Scrublet PCA + k-NN map
+      const c2 = prepCanvas($('scrub-canvas'));
+      if (c2) {
+        const { ctx, W, H } = c2;
+        const pL = 24, pR = 14, pT = 16, pB = 24, pw = W - pL - pR, ph = H - pT - pB;
+        ctx.strokeStyle = cBorder; ctx.beginPath();
+        ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+        const xOf = (x) => pL + ((x + 4.6) / 9.2) * pw;
+        const yOf = (y) => pT + ph - ((y + 3.4) / 7.8) * ph;
+
+        // Background simulated doublets (faint)
+        SCRUB_DATA.sim.forEach(s => {
+          ctx.fillStyle = s.het ? (cWarn + '35') : (cMuted + '22');
+          ctx.beginPath(); ctx.arc(xOf(s.x), yOf(s.y), 2.3, 0, Math.PI * 2); ctx.fill();
+        });
+
+        // Observed cells colored by Scrublet k-NN score
+        const scores = scoreScrublet(kNN);
+        SCRUB_DATA.obs.forEach((p, idx) => {
+          const sc = scores[idx];
+          const called = sc >= 0.52;
+          ctx.fillStyle = called ? cBad : cAcc;
+          ctx.beginPath(); ctx.arc(xOf(p.x), yOf(p.y), called ? 4.2 : 2.8, 0, Math.PI * 2); ctx.fill();
+        });
+
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = cAcc; ctx.fillText('● Low score (singlet)', pL + 6, pT + 10);
+        ctx.fillStyle = cBad; ctx.fillText('● High k-NN score (heterotypic bridge!)', pL + 6, pT + 23);
+        ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText('PCA 1 × PCA 2 (T / B / Mono clusters)', pL + pw / 2 - 78, H - 6);
+      }
+    }
+
+    ['s-cont', 's-osev', 's-nmad', 'chk-log'].forEach(id => $(id).addEventListener('input', renderMAD));
+    ['s-lam', 's-ctypes', 's-knn'].forEach(id => $(id).addEventListener('input', renderDoublets));
+    new ResizeObserver(() => { renderMAD(); renderDoublets(); }).observe($('mad-hist'));
+    renderMAD();
+    renderDoublets();
+  </script>
+</body>
+</html>
+

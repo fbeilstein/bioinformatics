@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dropout Kinetics &amp; UMI Collision Occupancy Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 9px; }
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; }
+    .ctrl-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 7px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 9px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.6px; color: var(--muted); }
+    .kpi-val { font-size: 13.4px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 4px 7px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--surface2); font-weight: 700; color: var(--muted); }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Dropout kinetics and UMI collision labs">
+    <button type="button" role="tab" id="tab-drop" aria-selected="true">1. Dropout Kinetics (Poisson vs. NB) &amp; CP10k + log1p</button>
+    <button type="button" role="tab" id="tab-umi" aria-selected="false">2. UMI Occupancy, Birthday Paradox &amp; Inversion</button>
+  </div>
+
+  <!-- TAB 1: Dropout Kinetics & CP10k -->
+  <div role="tabpanel" id="panel-drop" aria-labelledby="tab-drop">
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>NB Overdispersion α (Bursting)</span><span class="ctrl-val" id="v-dalpha">1.20</span></span>
+        <input type="range" id="s-dalpha" min="0" max="4" step="0.1" value="1.2"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Expressing Cell Subpopulation π_on</span><span class="ctrl-val" id="v-pion">100%</span></span>
+        <input type="range" id="s-pion" min="20" max="100" step="5" value="100"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Inspect Gene Mean μ</span><span class="ctrl-val" id="v-dmu">2.30</span></span>
+        <input type="range" id="s-dmu" min="-2.5" max="1.3" step="0.05" value="0.36"></label>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Zero Fraction P(X = 0) vs. Mean μ (PBMC3k Overlay)</span>
+          <span class="badge" id="drop-gap-badge">Excess zeros: —</span>
+        </div>
+        <canvas id="drop-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>CP10k + log1p Preview (Depth Stabilization)</span>
+          <span class="badge ok">0 → 0 (Sparse!)</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="CP10k and log1p transformation table">
+          <table>
+            <thead>
+              <tr>
+                <th>Cell Depth</th>
+                <th class="num">Raw UMI</th>
+                <th class="num">CP10k</th>
+                <th class="num">ln(1 + CP10k)</th>
+              </tr>
+            </thead>
+            <tbody id="norm-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:8px; font-size:11.6px; color:var(--muted);">
+          Notice two identical cells sequenced at <strong>1,000</strong> vs. <strong>10,000</strong> UMIs collapse to the exact same normalized value, while exact zeros stay <code>0.00</code> (preserving CSC/CSR RAM!).
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid-4">
+      <div class="kpi"><div class="kpi-lbl">Poisson P(X=0) = e^(−μ)</div><div class="kpi-val" id="k-zp" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">NB P(X=0) = (1+αμ)^(−1/α)</div><div class="kpi-val" id="k-znb" style="color:var(--accent);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Subpopulation Mixture Zero%</div><div class="kpi-val" id="k-zmix" style="color:var(--accent2);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Fano Factor Var / μ</div><div class="kpi-val" id="k-fano">—</div></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: UMI Occupancy & Collision Inversion -->
+  <div role="tabpanel" id="panel-umi" aria-labelledby="tab-umi" hidden>
+    <div class="bar">
+      <span style="font-weight:700; color:var(--muted);">Presets:</span>
+      <button type="button" class="btn active" data-umi="short8">Short 8-nt UMI (L=8, k=10,000)</button>
+      <button type="button" class="btn" data-umi="sat8">Heavy 8-nt Saturation (L=8, k=50,000)</button>
+      <button type="button" class="btn" data-umi="bday10">Birthday Onset (L=10, k=1,200)</button>
+      <button type="button" class="btn" data-umi="v3_12">10x v3 12-nt (L=12, k=100,000)</button>
+    </div>
+
+    <div class="ctrl-row-2">
+      <label class="ctrl"><span class="ctrl-top"><span>UMI Length L (nucleotides)</span><span class="ctrl-val" id="v-ul">8 nt (N = 65,536)</span></span>
+        <input type="range" id="s-ul" min="6" max="12" step="2" value="8"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>True Captured Molecules k (log scale)</span><span class="ctrl-val" id="v-uk">10,000</span></span>
+        <input type="range" id="s-uk" min="1.5" max="5.7" step="0.02" value="4.0"></label>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>UMI Occupancy Saturation E(k) = N(1 − (1 − 1/N)^k) Across Barcode Lengths</span>
+        <span class="badge warn" id="umi-loss-badge">Loss: —</span>
+      </div>
+      <canvas id="umi-canvas" style="height:215px;"></canvas>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Barcode Space N = 4^L</div><div class="kpi-val" id="k-un">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Expected Distinct UMIs E</div><div class="kpi-val" id="k-ue" style="color:var(--ok);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Lost Counts (k − E)</div><div class="kpi-val" id="k-uloss" style="color:var(--bad);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Birthday P(≥1 collision)</div><div class="kpi-val" id="k-ubday" style="color:var(--warn);">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Inverted k̂ = −N ln(1−E/N)</div><div class="kpi-val" id="k-uinv" style="color:var(--accent2);">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderDropout();
+      renderUMI();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      requestAnimationFrame(() => { if (idx === 0) renderDropout(); else renderUMI(); });
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Pure Math Functions ----
+    function nbZeroProb(mu, alpha) {
+      if (alpha <= 1e-9) return Math.exp(-mu);
+      return Math.pow(1 + alpha * mu, -1 / alpha);
+    }
+
+    function mixZeroProb(mu, alpha, piOn) {
+      // Overall mean is mu; expressing subpopulation has conditional mean mu / piOn
+      const muOn = mu / Math.max(1e-6, piOn);
+      return (1 - piOn) + piOn * nbZeroProb(muOn, alpha);
+    }
+
+    function umiOccupancy(L, k) {
+      const N = Math.pow(4, L);
+      // High-precision log1p form: 1 - (1 - 1/N)^k = -expm1(k * log1p(-1/N))
+      const E = N * (-Math.expm1(k * Math.log1p(-1 / N)));
+      const loss = k - E;
+      const fracLoss = k > 0 ? loss / k : 0;
+      const kHat = E < N ? -N * Math.log1p(-E / N) : Infinity;
+      return { N, E, loss, fracLoss, kHat };
+    }
+
+    function umiBirthdayProb(L, k) {
+      const N = Math.pow(4, L);
+      if (k <= 1) return 0;
+      if (k > N) return 1;
+      // Exact product in log space for modest k, smooth exact Stirling/approx for huge k
+      if (k <= 4000) {
+        let logNoColl = 0;
+        for (let j = 1; j < k; j++) logNoColl += Math.log1p(-j / N);
+        return -Math.expm1(logNoColl);
+      }
+      return -Math.expm1(-(k * (k - 1)) / (2 * N));
+    }
+
+    const PBMC_BINS = [
+      { mu: 0.0032, z: 0.9969 },
+      { mu: 0.032,  z: 0.9716 },
+      { mu: 0.32,   z: 0.8462 },
+      { mu: 2.3,    z: 0.2556 },
+      { mu: 16.0,   z: 0.0069 },
+    ];
+
+    function prepCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return null;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, W: rect.width, H: rect.height };
+    }
+
+    function renderDropout() {
+      const alpha = +$('s-dalpha').value;
+      const piOn = +$('s-pion').value / 100;
+      const mu = Math.pow(10, +$('s-dmu').value);
+      $('v-dalpha').textContent = alpha.toFixed(2);
+      $('v-pion').textContent = `${Math.round(piOn * 100)}%`;
+      $('v-dmu').textContent = mu >= 1 ? mu.toFixed(2) : mu.toFixed(3);
+
+      const zp = Math.exp(-mu);
+      const znb = nbZeroProb(mu, alpha);
+      const zmix = mixZeroProb(mu, alpha, piOn);
+      const fano = 1 + alpha * mu + ((1 - piOn) / Math.max(1e-6, piOn)) * mu;
+
+      $('k-zp').textContent = `${(zp * 100).toFixed(1)}%`;
+      $('k-znb').textContent = `${(znb * 100).toFixed(1)}%`;
+      $('k-zmix').textContent = `${(zmix * 100).toFixed(1)}%`;
+      $('k-fano').textContent = `${fano.toFixed(2)}×`;
+      $('drop-gap-badge').textContent = `Excess zeros: +${((zmix - zp) * 100).toFixed(1)} pp`;
+
+      // CP10k + log1p demo table
+      const rows = [
+        { lbl: 'Shallow cell (1,000 UMI)', depth: 1000, raw: 0 },
+        { lbl: 'Shallow cell (1,000 UMI)', depth: 1000, raw: 5 },
+        { lbl: 'Median cell (2,200 UMI)',  depth: 2200, raw: 11 },
+        { lbl: 'Deep cell (10,000 UMI)',   depth: 10000, raw: 50 },
+        { lbl: 'Hyper-abundant gene',      depth: 2200, raw: 385 },
+      ];
+      $('norm-tbody').innerHTML = rows.map(r => {
+        const cp10k = (r.raw / r.depth) * 10000;
+        const l1p = Math.log1p(cp10k);
+        return `<tr><td>${r.lbl}</td><td class="num">${r.raw}</td><td class="num">${cp10k.toFixed(1)}</td><td class="num" style="font-weight:700;color:var(--ok);">${l1p.toFixed(2)}</td></tr>`;
+      }).join('');
+
+      const c = prepCanvas($('drop-canvas'));
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cAcc2 = cs.getPropertyValue('--accent2').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      const pL = 42, pR = 14, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+      ctx.strokeStyle = cBorder; ctx.beginPath();
+      ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+      const xMin = -3, xMax = 1.4;
+      const xOf = (lmu) => pL + ((lmu - xMin) / (xMax - xMin)) * pw;
+      const yOf = (z) => pT + ph - z * ph;
+
+      const drawCurve = (fn, col, dash) => {
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+        if (dash) ctx.setLineDash(dash);
+        ctx.beginPath();
+        for (let i = 0; i <= 160; i++) {
+          const lm = xMin + (xMax - xMin) * (i / 160);
+          const px = xOf(lm), py = yOf(fn(Math.pow(10, lm)));
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke(); ctx.restore();
+      };
+      drawCurve(m => Math.exp(-m), cBad, [5, 3]);
+      drawCurve(m => nbZeroProb(m, alpha), cAcc, null);
+      if (piOn < 0.999) drawCurve(m => mixZeroProb(m, alpha, piOn), cAcc2, [3, 2]);
+
+      // PBMC3k observed dots
+      PBMC_BINS.forEach(b => {
+        ctx.fillStyle = cWarn;
+        ctx.beginPath(); ctx.arc(xOf(Math.log10(b.mu)), yOf(b.z), 4.6, 0, Math.PI * 2); ctx.fill();
+      });
+
+      // Vertical marker for inspected mu
+      const xm = xOf(Math.log10(mu));
+      ctx.save(); ctx.strokeStyle = cMuted; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(xm, pT); ctx.lineTo(xm, pT + ph); ctx.stroke(); ctx.restore();
+
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.fillStyle = cBad;  ctx.fillText('--- Poisson e^(−μ)', pL + 6, pT + ph - 32);
+      ctx.fillStyle = cAcc;  ctx.fillText(`— NB (α=${alpha.toFixed(1)})`, pL + 6, pT + ph - 19);
+      ctx.fillStyle = cWarn; ctx.fillText('● PBMC3k observed bins', pL + 6, pT + ph - 6);
+
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      for (let e = -3; e <= 1; e++) ctx.fillText(`10^${e}`, xOf(e) - 10, H - 7);
+      ctx.fillText('1.0', 14, yOf(1) + 4);
+      ctx.fillText('0.5', 14, yOf(0.5) + 4);
+      ctx.fillText('0.0', 14, yOf(0) + 3);
+    }
+
+    const UMI_PRESETS = {
+      short8: { L: 8,  lk: 4.00 },
+      sat8:   { L: 8,  lk: Math.log10(50000) },
+      bday10: { L: 10, lk: Math.log10(1200) },
+      v3_12:  { L: 12, lk: 5.00 },
+    };
+    document.querySelectorAll('[data-umi]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-umi]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const p = UMI_PRESETS[btn.dataset.umi];
+        $('s-ul').value = p.L; $('s-uk').value = p.lk;
+        renderUMI();
+      });
+    });
+
+    function renderUMI() {
+      const L = +$('s-ul').value;
+      const k = Math.round(Math.pow(10, +$('s-uk').value));
+      const occ = umiOccupancy(L, k);
+      const bday = umiBirthdayProb(L, k);
+
+      $('v-ul').textContent = `${L} nt (N = ${occ.N.toLocaleString()})`;
+      $('v-uk').textContent = k.toLocaleString();
+      $('k-un').textContent = occ.N.toLocaleString();
+      $('k-ue').textContent = Math.round(occ.E).toLocaleString();
+      $('k-uloss').textContent = `${Math.round(occ.loss).toLocaleString()} (${(occ.fracLoss * 100).toFixed(2)}%)`;
+      $('k-ubday').textContent = bday > 0.9999 ? '>99.99%' : `${(bday * 100).toFixed(2)}%`;
+      $('k-uinv').textContent = Number.isFinite(occ.kHat) ? Math.round(occ.kHat).toLocaleString() : '∞ (saturated)';
+
+      const lb = $('umi-loss-badge');
+      lb.textContent = `Under-count loss: ${(occ.fracLoss * 100).toFixed(2)}%`;
+      lb.className = occ.fracLoss > 0.05 ? 'badge bad' : (occ.fracLoss > 0.005 ? 'badge warn' : 'badge ok');
+
+      const c = prepCanvas($('umi-canvas'));
+      if (!c) return;
+      const { ctx, W, H } = c;
+      const cs = getComputedStyle(document.documentElement);
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc = cs.getPropertyValue('--accent').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+      const cOk = cs.getPropertyValue('--ok').trim();
+      const cWarn = cs.getPropertyValue('--warn').trim();
+
+      const pL = 48, pR = 16, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+      ctx.strokeStyle = cBorder; ctx.beginPath();
+      ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+      const xMin = 1.5, xMax = 6.0, yMin = 1.5, yMax = 6.2;
+      const xOf = (lv) => pL + ((lv - xMin) / (xMax - xMin)) * pw;
+      const yOf = (lv) => pT + ph - ((Math.min(yMax, Math.max(yMin, lv)) - yMin) / (yMax - yMin)) * ph;
+
+      // Ideal E = k diagonal
+      ctx.save(); ctx.strokeStyle = cMuted; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(xOf(xMin), yOf(xMin)); ctx.lineTo(xOf(xMax), yOf(xMax)); ctx.stroke(); ctx.restore();
+
+      const curves = [
+        { Lc: 6, col: cWarn, lbl: '6-nt (4k)' },
+        { Lc: 8, col: cBad,  lbl: '8-nt (65k)' },
+        { Lc: 10, col: cAcc, lbl: '10-nt (1.05M)' },
+        { Lc: 12, col: cOk,  lbl: '12-nt (16.8M)' },
+      ];
+      curves.forEach(cv => {
+        ctx.strokeStyle = cv.col; ctx.lineWidth = cv.Lc === L ? 3.0 : 1.5;
+        ctx.beginPath();
+        for (let i = 0; i <= 140; i++) {
+          const lk = xMin + (xMax - xMin) * (i / 140);
+          const o = umiOccupancy(cv.Lc, Math.pow(10, lk));
+          const px = xOf(lk), py = yOf(Math.log10(Math.max(1, o.E)));
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      });
+
+      // Active point
+      const px = xOf(Math.log10(k)), py = yOf(Math.log10(Math.max(1, occ.E)));
+      ctx.fillStyle = cBad; ctx.beginPath(); ctx.arc(px, py, 5.2, 0, Math.PI * 2); ctx.fill();
+
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      curves.forEach((cv, i) => { ctx.fillStyle = cv.col; ctx.fillText(`— ${cv.lbl}`, pL + 8, pT + 11 + i * 13); });
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      for (let e = 2; e <= 6; e++) {
+        ctx.fillText(`10^${e}`, xOf(e) - 10, H - 7);
+        ctx.fillText(`10^${e}`, 8, yOf(e) + 3);
+      }
+    }
+
+    ['s-dalpha', 's-pion', 's-dmu'].forEach(id => $(id).addEventListener('input', renderDropout));
+    ['s-ul', 's-uk'].forEach(id => $(id).addEventListener('input', renderUMI));
+    new ResizeObserver(() => { renderDropout(); renderUMI(); }).observe($('drop-canvas'));
+    renderDropout();
+    renderUMI();
+  </script>
+</body>
+</html>
+

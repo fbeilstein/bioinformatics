@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sparse Matrix Indexing &amp; Droplet Cell-Calling Lab</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --surface2: #f1f5f9;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not(.light-theme) {
+        --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+        --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+        --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+      }
+    }
+    :root.dark-theme {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #0b1220;
+      --text: #f1f5f9; --muted: #94a3b8; --border: #334155;
+      --accent: #60a5fa; --accent2: #a78bfa; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    :root.light-theme {
+      --bg: #ffffff; --surface: #f8fafc; --surface2: #f1f5f9;
+      --text: #0f172a; --muted: #475569; --border: #cbd5e1;
+      --accent: #2563eb; --accent2: #7c3aed; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 10px 14px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.38;
+    }
+    .tablist { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+    [role="tab"] {
+      position: relative; appearance: none; background: transparent; border: 0;
+      padding: 7px 14px 9px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+    [role="tab"][aria-selected="true"] { color: var(--accent); }
+    [role="tab"][aria-selected="true"]::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -1px; border-bottom: 3px solid var(--accent);
+    }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1.25fr; gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.8px; margin-bottom: 8px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: 11.2px; font-weight: 700;
+      font-family: ui-monospace, monospace; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+    }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.bad { color: var(--bad); border-color: var(--bad); }
+
+    .btn {
+      appearance: none; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+      font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn:hover, .btn.active { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    .mat-grid { display: grid; grid-template-columns: 36px repeat(6, 1fr); gap: 4px; align-items: center; }
+    .mat-hdr { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; font-family: ui-monospace, monospace; }
+    .mat-cell {
+      height: 30px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--bg); color: var(--muted); font-family: ui-monospace, monospace;
+      font-weight: 700; font-size: 12.5px; cursor: pointer;
+    }
+    .mat-cell.nz { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .arr-box {
+      font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.8px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+      padding: 7px 9px; margin-bottom: 7px; overflow-x: auto; white-space: nowrap;
+    }
+    .arr-lbl { font-weight: 700; color: var(--accent2); display: inline-block; width: 72px; }
+
+    .ctrl-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 9px; }
+    .ctrl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .ctrl-top { display: flex; justify-content: space-between; font-weight: 600; }
+    .ctrl-val { font-family: ui-monospace, monospace; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    @supports not (accent-color: auto) {
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--progress, 50%), var(--border) var(--progress, 50%), var(--border) 100%);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff;
+      }
+    }
+
+    canvas { width: 100%; height: 220px; display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+    .kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; }
+    .kpi-lbl { font-size: 10.8px; color: var(--muted); }
+    .kpi-val { font-size: 13.5px; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); }
+    .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .table-wrapper:focus-visible { outline: 2px solid var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.8px; }
+    th, td { padding: 4px 7px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--surface2); font-weight: 700; color: var(--muted); }
+    .num { text-align: right; font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div class="tablist" role="tablist" aria-label="Sparse matrices and droplet cell calling">
+    <button type="button" role="tab" id="tab-sp" aria-selected="true">1. COO / CSC / CSR Indexing &amp; RAM Economics</button>
+    <button type="button" role="tab" id="tab-cc" aria-selected="false">2. Barcode Rank ("Knee") &amp; EmptyDrops Rescue</button>
+  </div>
+
+  <!-- TAB 1: Sparse Matrix Compression -->
+  <div role="tabpanel" id="panel-sp" aria-labelledby="tab-sp">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Click Cells to Edit 6×6 Count Matrix</span>
+          <div>
+            <button type="button" class="btn active" id="btn-csc">CSC (Genes)</button>
+            <button type="button" class="btn" id="btn-csr">CSR (Cells)</button>
+            <button type="button" class="btn" id="btn-sp-reset">Reset</button>
+          </div>
+        </div>
+        <div class="mat-grid" id="mat-grid"></div>
+        <div style="margin-top:8px; font-size:11.6px; color:var(--muted);">
+          Click any tile to cycle `0 → 1 → 3 → 5 → 0`. Watch how `indptr` shifts while zeros take <strong>zero bytes</strong>!
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span id="fmt-title">CSC Encoded Arrays (scipy.sparse.csc_matrix)</span>
+          <span class="badge" id="sp-nnz-badge">nnz = 7 (80.6% sparse)</span>
+        </div>
+        <div class="arr-box"><span class="arr-lbl">data</span><span id="arr-data"></span></div>
+        <div class="arr-box"><span class="arr-lbl">indices</span><span id="arr-idx"></span></div>
+        <div class="arr-box"><span class="arr-lbl">indptr</span><span id="arr-ptr"></span></div>
+        <div class="arr-box" style="margin-bottom:0;"><span class="arr-lbl">COO (.mtx)</span><span id="arr-coo"></span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
+      <div class="card-title">
+        <span>Genome-Scale RAM Simulator (32,738 Human Genes — PBMC3k Preset)</span>
+        <span class="badge ok" id="ram-ratio-badge">4,034× compression</span>
+      </div>
+      <div class="ctrl-row" style="margin-bottom:6px;">
+        <label class="ctrl"><span class="ctrl-top"><span>Droplets n_obs (thousands)</span><span class="ctrl-val" id="v-nobs">737k (PBMC3k)</span></span>
+          <input type="range" id="s-nobs" min="3" max="1000" step="1" value="737"></label>
+        <label class="ctrl"><span class="ctrl-top"><span>Matrix Density (% non-zero)</span><span class="ctrl-val" id="v-dens">0.012%</span></span>
+          <input type="range" id="s-dens" min="-2.0" max="1.0" step="0.05" value="-1.92"></label>
+        <div style="display:flex; gap:6px; align-items:flex-end;">
+          <button type="button" class="btn" id="btn-pbmc-raw">Raw PBMC3k (737k)</button>
+          <button type="button" class="btn" id="btn-pbmc-flt">Filtered (2.6k)</button>
+        </div>
+      </div>
+      <div class="kpi-grid" style="margin-top:4px;">
+        <div class="kpi"><div class="kpi-lbl">Dense float32 RAM</div><div class="kpi-val" id="k-df32" style="color:var(--bad);">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Dense float64 RAM</div><div class="kpi-val" id="k-df64" style="color:var(--bad);">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">CSC Sparse RAM</div><div class="kpi-val" id="k-csc" style="color:var(--ok);">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">Colab 12 GB Status</div><div class="kpi-val" id="k-oom">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Knee Plot & EmptyDrops -->
+  <div role="tabpanel" id="panel-cc" aria-labelledby="tab-cc" hidden>
+    <div class="ctrl-row">
+      <label class="ctrl"><span class="ctrl-top"><span>Expected Cells N (CR v2 m/10)</span><span class="ctrl-val" id="v-expn">3,000</span></span>
+        <input type="range" id="s-expn" min="1000" max="6000" step="250" value="3000"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>Hard UMI Cutoff T</span><span class="ctrl-val" id="v-tumi">500</span></span>
+        <input type="range" id="s-tumi" min="100" max="1500" step="25" value="500"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>EmptyDrops FDR Cutoff</span><span class="ctrl-val" id="v-efdr">0.010</span></span>
+        <input type="range" id="s-efdr" min="0.001" max="0.05" step="0.001" value="0.01"></label>
+    </div>
+
+    <div class="grid-2" style="grid-template-columns: 1.05fr 1fr;">
+      <div class="card">
+        <div class="card-title">
+          <span>PBMC3k Barcode Rank Curve (Log–Log)</span>
+          <span class="badge" id="cr-cut-badge">CR v2 T = 569</span>
+        </div>
+        <canvas id="knee-canvas"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>Transitional Droplets: EmptyDrops Ambient Test</span>
+          <span class="badge ok" id="ed-resc-badge">— rescued</span>
+        </div>
+        <div class="table-wrapper" tabindex="0" role="region" aria-label="EmptyDrops candidate droplets">
+          <table>
+            <thead>
+              <tr>
+                <th>Droplet Profile</th>
+                <th class="num">Total UMI</th>
+                <th class="num">MT %</th>
+                <th class="num">ED FDR</th>
+                <th>Hard &gt;T</th>
+                <th>EmptyDrops</th>
+              </tr>
+            </thead>
+            <tbody id="ed-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-lbl">Cell Ranger v2 Cutoff (m/10)</div><div class="kpi-val" id="k-crt">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Hard Cutoff Cells Called</div><div class="kpi-val" id="k-hcnt">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Ambient Soup MT %</div><div class="kpi-val" style="color:var(--warn);">6.62% (3×)</div></div>
+      <div class="kpi"><div class="kpi-lbl">Low-RNA Cells Rescued</div><div class="kpi-val" id="k-resc" style="color:var(--ok);">—</div></div>
+    </div>
+  </div>
+
+  <script>
+    function applyTheme(t) {
+      const root = document.documentElement;
+      root.classList.remove('light-theme', 'dark-theme');
+      if (t === 'light') root.classList.add('light-theme');
+      else if (t === 'dark') root.classList.add('dark-theme');
+      renderKnee();
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'theme-change') applyTheme(e.data.theme);
+    });
+    try { window.parent.postMessage({ type: 'get-theme' }, '*'); } catch (_) {}
+
+    if (!CSS.supports('accent-color', 'auto')) {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const upd = () => el.style.setProperty('--progress', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+        el.addEventListener('input', upd); upd();
+      });
+    }
+
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    function selectTab(idx) {
+      tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === idx)); panels[i].hidden = (i !== idx); });
+      if (idx === 1) requestAnimationFrame(renderKnee);
+    }
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(i));
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') { const n = (i + 1) % tabs.length; tabs[n].focus(); selectTab(n); }
+        else if (e.key === 'ArrowLeft') { const n = (i - 1 + tabs.length) % tabs.length; tabs[n].focus(); selectTab(n); }
+      });
+    });
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Pure Sparse Matrix Encoders ----
+    function encodeCSC(mat) {
+      const nRows = mat.length, nCols = mat[0].length;
+      const data = [], indices = [], indptr = [0];
+      for (let j = 0; j < nCols; j++) {
+        for (let i = 0; i < nRows; i++) {
+          if (mat[i][j] !== 0) { data.push(mat[i][j]); indices.push(i); }
+        }
+        indptr.push(data.length);
+      }
+      return { data, indices, indptr };
+    }
+
+    function encodeCSR(mat) {
+      const nRows = mat.length, nCols = mat[0].length;
+      const data = [], indices = [], indptr = [0];
+      for (let i = 0; i < nRows; i++) {
+        for (let j = 0; j < nCols; j++) {
+          if (mat[i][j] !== 0) { data.push(mat[i][j]); indices.push(j); }
+        }
+        indptr.push(data.length);
+      }
+      return { data, indices, indptr };
+    }
+
+    function calcMemoryBytes(nObs, nVars, nnz) {
+      return {
+        denseF32: 4 * nObs * nVars,
+        denseF64: 8 * nObs * nVars,
+        cscBytes: 8 * nnz + 4 * (nVars + 1),
+        csrBytes: 8 * nnz + 4 * (nObs + 1),
+      };
+    }
+
+    const INIT_MAT = [
+      [3, 0, 0, 1, 0, 0],
+      [0, 0, 4, 0, 0, 2],
+      [2, 0, 0, 0, 0, 0],
+      [0, 0, 5, 0, 0, 0],
+      [0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0],
+    ];
+    let curMat = INIT_MAT.map(r => [...r]);
+    let sparseMode = 'csc';
+
+    function renderSparse() {
+      const grid = $('mat-grid');
+      let html = '<div class="mat-hdr"></div>' + [0,1,2,3,4,5].map(j => `<div class="mat-hdr">G${j}</div>`).join('');
+      for (let i = 0; i < 6; i++) {
+        html += `<div class="mat-hdr">C${i}</div>`;
+        for (let j = 0; j < 6; j++) {
+          const v = curMat[i][j];
+          html += `<button type="button" class="mat-cell ${v > 0 ? 'nz' : ''}" data-r="${i}" data-c="${j}">${v}</button>`;
+        }
+      }
+      grid.innerHTML = html;
+      grid.querySelectorAll('.mat-cell').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const r = +btn.dataset.r, c = +btn.dataset.c;
+          const next = { 0: 1, 1: 3, 3: 5, 5: 0 }[curMat[r][c]] ?? 0;
+          curMat[r][c] = next;
+          renderSparse();
+        });
+      });
+
+      const enc = sparseMode === 'csc' ? encodeCSC(curMat) : encodeCSR(curMat);
+      $('fmt-title').textContent = sparseMode === 'csc'
+        ? 'CSC Encoded Arrays (scipy.sparse.csc_matrix)'
+        : 'CSR Encoded Arrays (scipy.sparse.csr_matrix)';
+      const spPct = ((1 - enc.data.length / 36) * 100).toFixed(1);
+      $('sp-nnz-badge').textContent = `nnz = ${enc.data.length} (${spPct}% sparse)`;
+      $('arr-data').textContent = `[${enc.data.join(', ')}]`;
+      $('arr-idx').textContent = `[${enc.indices.join(', ')}]`;
+      $('arr-ptr').textContent = `[${enc.indptr.join(', ')}]`;
+
+      // 1-based COO preview
+      const coo = [];
+      for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) if (curMat[i][j] > 0) coo.push(`(${j+1},${i+1}:${curMat[i][j]})`);
+      $('arr-coo').textContent = coo.slice(0, 7).join(' ') + (coo.length > 7 ? ' …' : '');
+    }
+
+    function fmtBytes(b) {
+      if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(2) + ' GB';
+      if (b >= 1024 ** 2) return (b / 1024 ** 2).toFixed(2) + ' MB';
+      return (b / 1024).toFixed(1) + ' KB';
+    }
+
+    function renderRAM() {
+      const nObs = +$('s-nobs').value * 1000;
+      const densPct = Math.pow(10, +$('s-dens').value);
+      const nVars = 32738;
+      const nnz = Math.round(nObs * nVars * (densPct / 100));
+      const mem = calcMemoryBytes(nObs, nVars, nnz);
+      $('v-nobs').textContent = `${$('s-nobs').value}k`;
+      $('v-dens').textContent = `${densPct.toFixed(3)}%`;
+      $('k-df32').textContent = fmtBytes(mem.denseF32);
+      $('k-df64').textContent = fmtBytes(mem.denseF64);
+      $('k-csc').textContent = fmtBytes(mem.cscBytes);
+      const ratio = mem.denseF32 / Math.max(1, mem.cscBytes);
+      $('ram-ratio-badge').textContent = `${Math.round(ratio).toLocaleString()}× compression`;
+      const oom = mem.denseF32 > 12 * 1024 ** 3;
+      $('k-oom').textContent = oom ? 'Dense OOM 💥 / CSC OK ⚡' : 'Both fit in 12 GB';
+      $('k-oom').style.color = oom ? 'var(--warn)' : 'var(--ok)';
+    }
+
+    $('btn-csc').addEventListener('click', () => { sparseMode = 'csc'; $('btn-csc').classList.add('active'); $('btn-csr').classList.remove('active'); renderSparse(); });
+    $('btn-csr').addEventListener('click', () => { sparseMode = 'csr'; $('btn-csr').classList.add('active'); $('btn-csc').classList.remove('active'); renderSparse(); });
+    $('btn-sp-reset').addEventListener('click', () => { curMat = INIT_MAT.map(r => [...r]); renderSparse(); });
+    ['s-nobs', 's-dens'].forEach(id => $(id).addEventListener('input', renderRAM));
+    $('btn-pbmc-raw').addEventListener('click', () => { $('s-nobs').value = 737; $('s-dens').value = -1.92; renderRAM(); });
+    $('btn-pbmc-flt').addEventListener('click', () => { $('s-nobs').value = 3; $('s-dens').value = 0.41; renderRAM(); });
+
+    // ---- TAB 2: Knee Curve & EmptyDrops ----
+    const KNEE_RANKS = [1, 10, 69, 500, 1500, 2000, 2500, 2700, 2850, 3000, 5000, 14397, 50000, 158890];
+    const KNEE_UMIS  = [15844, 9200, 5000, 3200, 2195, 1775, 1102, 548, 220, 89, 28, 10, 3, 1];
+
+    function interpUmiAtRank(r) {
+      const lr = Math.log10(Math.max(1, r));
+      for (let i = 0; i < KNEE_RANKS.length - 1; i++) {
+        const a = Math.log10(KNEE_RANKS[i]), b = Math.log10(KNEE_RANKS[i + 1]);
+        if (lr >= a && lr <= b) {
+          const t = (lr - a) / (b - a);
+          return Math.pow(10, Math.log10(KNEE_UMIS[i]) * (1 - t) + Math.log10(KNEE_UMIS[i + 1]) * t);
+        }
+      }
+      return 1;
+    }
+
+    function interpRankAtUmi(u) {
+      const lu = Math.log10(Math.max(1, u));
+      for (let i = 0; i < KNEE_UMIS.length - 1; i++) {
+        const a = Math.log10(KNEE_UMIS[i]), b = Math.log10(KNEE_UMIS[i + 1]);
+        if (lu <= a && lu >= b) {
+          const t = (a - lu) / (a - b);
+          return Math.round(Math.pow(10, Math.log10(KNEE_RANKS[i]) * (1 - t) + Math.log10(KNEE_RANKS[i + 1]) * t));
+        }
+      }
+      return 1;
+    }
+
+    // Representative transitional droplets tested by EmptyDrops (Dirichlet-Multinomial against ambient soup)
+    const TRANSITIONAL = [
+      { name: 'Intact Monocyte',   umi: 2410, mt: 1.9, fdr: 0.0001 },
+      { name: 'Intact T-cell',     umi: 1120, mt: 2.2, fdr: 0.0001 },
+      { name: 'Small Lymphocyte',  umi: 465,  mt: 2.1, fdr: 0.0004 },
+      { name: 'Platelet (PPBP+)',  umi: 245,  mt: 1.4, fdr: 0.0009 },
+      { name: 'Small Erythroid',   umi: 310,  mt: 1.8, fdr: 0.0032 },
+      { name: 'Ambient Soup #1',   umi: 390,  mt: 6.8, fdr: 0.4200 },
+      { name: 'Ambient Soup #2',   umi: 185,  mt: 7.4, fdr: 0.7800 },
+      { name: 'Empty Droplet #3',  umi: 62,   mt: 6.5, fdr: 0.9600 },
+    ];
+
+    function renderKnee() {
+      const expN = +$('s-expn').value;
+      const tUmi = +$('s-tumi').value;
+      const fdrCut = +$('s-efdr').value;
+      $('v-expn').textContent = expN.toLocaleString();
+      $('v-tumi').textContent = tUmi;
+      $('v-efdr').textContent = fdrCut.toFixed(3);
+
+      // Cell Ranger v2: m = 99th percentile of top N -> rank = 0.01 * N
+      const m99 = interpUmiAtRank(Math.max(1, 0.01 * expN));
+      const crT = m99 / 10;
+      const hardCells = interpRankAtUmi(tUmi);
+      $('cr-cut-badge').textContent = `CR v2 T = ${Math.round(crT)}`;
+      $('k-crt').textContent = `${crT.toFixed(1)} UMIs`;
+      $('k-hcnt').textContent = hardCells.toLocaleString();
+
+      let rescued = 0;
+      $('ed-tbody').innerHTML = TRANSITIONAL.map(d => {
+        const passHard = d.umi > tUmi;
+        const passED = d.fdr <= fdrCut;
+        if (!passHard && passED) rescued++;
+        return `
+          <tr>
+            <td><strong>${d.name}</strong></td>
+            <td class="num">${d.umi}</td>
+            <td class="num" style="color:${d.mt > 5 ? 'var(--warn)' : 'var(--text)'};">${d.mt.toFixed(1)}%</td>
+            <td class="num">${d.fdr < 0.001 ? '&lt;1e-3' : d.fdr.toFixed(3)}</td>
+            <td style="font-weight:700;color:${passHard ? 'var(--ok)' : 'var(--muted)'};">${passHard ? 'Cell' : 'Drop'}</td>
+            <td style="font-weight:700;color:${passED ? 'var(--ok)' : 'var(--bad)'};">${!passHard && passED ? 'Rescued ✓' : (passED ? 'Cell ✓' : 'Empty ✗')}</td>
+          </tr>
+        `;
+      }).join('');
+      $('k-resc').textContent = `${rescued} / ${TRANSITIONAL.filter(d => d.umi <= tUmi && d.fdr <= 0.01).length} low-RNA`;
+      $('ed-resc-badge').textContent = `${rescued} rescued below T`;
+
+      // Plot log-log knee canvas
+      const canvas = $('knee-canvas');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const cs = getComputedStyle(document.documentElement);
+      const cText = cs.getPropertyValue('--text').trim();
+      const cMuted = cs.getPropertyValue('--muted').trim();
+      const cBorder = cs.getPropertyValue('--border').trim();
+      const cAcc2 = cs.getPropertyValue('--accent2').trim();
+      const cBad = cs.getPropertyValue('--bad').trim();
+
+      const pL = 44, pR = 14, pT = 16, pB = 26, pw = W - pL - pR, ph = H - pT - pB;
+      ctx.strokeStyle = cBorder; ctx.beginPath();
+      ctx.moveTo(pL, pT); ctx.lineTo(pL, pT + ph); ctx.lineTo(pL + pw, pT + ph); ctx.stroke();
+
+      const xOf = (r) => pL + (Math.log10(Math.max(1, r)) / 5.3) * pw;
+      const yOf = (u) => pT + ph - (Math.log10(Math.max(1, u)) / 4.4) * ph;
+
+      // Knee curve
+      ctx.strokeStyle = cText; ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      KNEE_RANKS.forEach((r, i) => {
+        const px = xOf(r), py = yOf(KNEE_UMIS[i]);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+
+      // CR v2 cutoff line
+      ctx.save(); ctx.strokeStyle = cAcc2; ctx.lineWidth = 1.6; ctx.setLineDash([5, 3]);
+      ctx.beginPath(); ctx.moveTo(pL, yOf(crT)); ctx.lineTo(pL + pw, yOf(crT)); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = cAcc2; ctx.font = 'bold 10px ui-monospace, monospace';
+      ctx.fillText(`CR v2 m/10=${Math.round(crT)}`, pL + 6, yOf(crT) - 5);
+
+      // Hard cutoff line
+      ctx.save(); ctx.strokeStyle = cBad; ctx.lineWidth = 1.7; ctx.setLineDash([3, 2]);
+      ctx.beginPath(); ctx.moveTo(pL, yOf(tUmi)); ctx.lineTo(pL + pw, yOf(tUmi)); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = cBad;
+      ctx.fillText(`Hard T=${tUmi}`, pL + pw - 74, yOf(tUmi) + 12);
+
+      ctx.fillStyle = cMuted; ctx.font = '10px system-ui, sans-serif';
+      for (let e = 0; e <= 5; e++) ctx.fillText(`10^${e}`, xOf(Math.pow(10, e)) - 8, H - 7);
+      for (let e = 0; e <= 4; e++) ctx.fillText(`10^${e}`, 6, yOf(Math.pow(10, e)) + 3);
+    }
+
+    ['s-expn', 's-tumi', 's-efdr'].forEach(id => $(id).addEventListener('input', renderKnee));
+    new ResizeObserver(() => renderKnee()).observe($('knee-canvas'));
+    renderSparse();
+    renderRAM();
+    renderKnee();
+  </script>
+</body>
+</html>
+
